@@ -1,7 +1,7 @@
 # Margo - AI-Powered PDF Reader and Annotator
 
 <p align="center">
-  <img src="frontend/assets/icon-256.png" alt="Margo Logo" width="128">
+  <img src="frontend/assets/icons/512x512.png" alt="Margo Logo" width="128">
 </p>
 
 **Margo** is an AI-powered PDF reader for annotating and discussing academic papers. Screenshot sections and ask questions about them, with full LaTeX/Markdown rendering support.
