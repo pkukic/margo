@@ -163,6 +163,30 @@ async def ask_question(request: AskRequest):
             image_base64=request.image_base64
         )
         
+        # Generate title for new annotations (first message)
+        generated_title = None
+        if not annotation.title and not request.chat_history:
+            try:
+                print(f"Generating title for annotation {request.annotation_id}...")
+                generated_title = await ai_service.generate_title(
+                    question=request.question,
+                    answer=response,
+                    image_base64=request.image_base64
+                )
+                print(f"Generated title: {generated_title}")
+                if generated_title:
+                    chat_storage.set_annotation_title(
+                        pdf_path=request.pdf_path,
+                        annotation_id=request.annotation_id,
+                        title=generated_title
+                    )
+                    print(f"Title saved successfully")
+            except Exception as e:
+                print(f"Error generating title: {e}")
+                import traceback
+                traceback.print_exc()
+                # Not critical, continue without title
+        
         # Add messages to the annotation
         user_message = Message(
             role="user",
@@ -187,7 +211,8 @@ async def ask_question(request: AskRequest):
             "response": response,
             "annotation_id": request.annotation_id,
             "user_message_id": user_message.id,
-            "assistant_message_id": assistant_message.id
+            "assistant_message_id": assistant_message.id,
+            "title": generated_title
         }
     
     except Exception as e:

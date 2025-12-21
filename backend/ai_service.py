@@ -138,8 +138,7 @@ The user will share excerpts from academic papers (as text or images) and ask qu
         # Configure the request
         config = types.GenerateContentConfig(
             system_instruction=self.system_prompt,
-            temperature=0.7,
-            max_output_tokens=4096
+            temperature=0.7
         )
         
         # Generate response
@@ -150,3 +149,71 @@ The user will share excerpts from academic papers (as text or images) and ask qu
         )
         
         return response.text
+    
+    async def generate_title(
+        self,
+        question: str,
+        answer: str,
+        image_base64: Optional[str] = None
+    ) -> Optional[str]:
+        """Generate a short, descriptive title for an annotation based on the Q&A."""
+        
+        if not self.gemini_client:
+            raise ValueError("Gemini API not configured")
+        
+        # Build a simple text-only prompt for title generation
+        # Don't include image to keep it simple and fast
+        prompt = f"""Generate a SHORT title (3-6 words) for this Q&A about an academic paper. Return ONLY the title, nothing else.
+
+Question: {question}
+
+Answer: {answer[:300]}
+
+Title:"""
+        
+        contents = [types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=prompt)]
+        )]
+        
+        config = types.GenerateContentConfig(
+            temperature=0.3
+        )
+        
+        try:
+            response = self.gemini_client.models.generate_content(
+                model=self.current_model,
+                contents=contents,
+                config=config
+            )
+            
+            # Debug: print response details
+            print(f"Title generation response object: {response}")
+            if response:
+                print(f"Response candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
+                if hasattr(response, 'candidates') and response.candidates:
+                    candidate = response.candidates[0]
+                    print(f"Finish reason: {candidate.finish_reason if hasattr(candidate, 'finish_reason') else 'N/A'}")
+                    if hasattr(candidate, 'safety_ratings'):
+                        print(f"Safety ratings: {candidate.safety_ratings}")
+            
+            # Check for valid response
+            if response and response.text:
+                title = response.text.strip().strip('"').strip("'").strip()
+                # Remove common prefixes the model might add
+                for prefix in ["Title:", "title:", "**", "##"]:
+                    if title.startswith(prefix):
+                        title = title[len(prefix):].strip()
+                # Limit length
+                if len(title) > 50:
+                    title = title[:47] + "..."
+                return title if title else None
+            else:
+                print(f"Title generation returned empty response")
+                print(f"response.text = {repr(response.text) if response else 'response is None'}")
+                return None
+        except Exception as e:
+            print(f"Title generation API error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None

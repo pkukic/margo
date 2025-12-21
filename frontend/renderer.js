@@ -1251,9 +1251,12 @@ function createFloatingAnnotation(annotation) {
     
     const messageCount = annotation.messages ? annotation.messages.length : 0;
     
+    // Use AI-generated title if available
+    const title = annotation.title || `Page ${annotation.page_number}`;
+    
     div.innerHTML = `
         <div class="floating-annotation-header">
-            <span class="floating-annotation-page">Page ${annotation.page_number}</span>
+            <span class="floating-annotation-title">${escapeHtml(title)}</span>
             <button class="floating-annotation-close" title="Close">&times;</button>
         </div>
         <div class="floating-annotation-preview">
@@ -1483,9 +1486,13 @@ function createAnnotationCard(annotation) {
     
     const messageCount = annotation.messages ? annotation.messages.length : 0;
     
+    // Use AI-generated title if available
+    const title = annotation.title || `Page ${annotation.page_number}`;
+    
     card.innerHTML = `
         <div class="annotation-card-header">
-            <span class="annotation-page">Page ${annotation.page_number}</span>
+            <span class="annotation-title">${escapeHtml(title)}</span>
+            <span class="annotation-page">p. ${annotation.page_number}</span>
         </div>
         ${previewHtml}
         <p class="annotation-preview">${escapeHtml(firstQuestion)}</p>
@@ -1531,8 +1538,9 @@ function openAnnotationChat(annotationId) {
         el.classList.toggle('active', el.dataset.annotationId === annotationId);
     });
     
-    // Update chat panel
-    elements.chatTitle.textContent = `Page ${annotation.page_number} Annotation`;
+    // Update chat panel title - use AI-generated title if available
+    const title = annotation.title || `Page ${annotation.page_number} Annotation`;
+    elements.chatTitle.textContent = title;
     
     // Show preview
     if (annotation.image_base64) {
@@ -1550,6 +1558,9 @@ function openAnnotationChat(annotationId) {
     
     // Show chat panel
     elements.chatPanel.classList.remove('hidden');
+    
+    // Scroll chat to top
+    elements.chatMessages.scrollTop = 0;
     
     // Focus input
     elements.chatInput.focus();
@@ -1722,6 +1733,12 @@ async function sendMessage() {
         // Update local message IDs from server
         if (response.user_message_id) {
             userMessage.id = response.user_message_id;
+        }
+        
+        // Update title if returned by backend
+        if (response.title) {
+            annotation.title = response.title;
+            elements.chatTitle.textContent = response.title;
         }
         
         // Re-render messages

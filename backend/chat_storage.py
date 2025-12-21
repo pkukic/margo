@@ -50,6 +50,8 @@ class Annotation:
     # For screenshot annotations
     bounding_box: Optional[dict] = None  # {x, y, width, height} in PDF coordinates
     image_base64: Optional[str] = None  # Screenshot image data
+    # AI-generated title for this annotation
+    title: Optional[str] = None
     # Chat messages for this annotation
     messages: List[Message] = field(default_factory=list)
     
@@ -60,6 +62,7 @@ class Annotation:
             "created_at": self.created_at,
             "bounding_box": self.bounding_box,
             "image_base64": self.image_base64,
+            "title": self.title,
             "messages": [m.to_dict() for m in self.messages]
         }
     
@@ -71,6 +74,7 @@ class Annotation:
             created_at=data.get("created_at", datetime.now().isoformat()),
             bounding_box=data.get("bounding_box"),
             image_base64=data.get("image_base64"),
+            title=data.get("title"),
             messages=[Message.from_dict(m) for m in data.get("messages", [])]
         )
 
@@ -204,6 +208,21 @@ class ChatStorage:
             return False
         
         chat_file.annotations[annotation_id].messages.extend(messages)
+        return True
+    
+    def set_annotation_title(
+        self,
+        pdf_path: str,
+        annotation_id: str,
+        title: str
+    ) -> bool:
+        """Set the title of an annotation."""
+        chat_file = self.get_or_create_chat_file(pdf_path)
+        
+        if annotation_id not in chat_file.annotations:
+            return False
+        
+        chat_file.annotations[annotation_id].title = title
         return True
     
     def edit_message(

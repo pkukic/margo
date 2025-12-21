@@ -555,9 +555,21 @@ html, body {
     margin-bottom: 8px;
 }
 
+.annotation-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
+}
+
 .annotation-page {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
+    flex-shrink: 0;
 }
 
 .annotation-preview {
@@ -1036,6 +1048,17 @@ html, body {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
+}
+
+.floating-annotation-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
 }
 
 .floating-annotation-page {
