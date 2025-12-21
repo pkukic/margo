@@ -186,11 +186,29 @@ async function loadProviders() {
         const data = await response.json();
         state.providers = data.providers || [];
         
-        // Get current model
-        const currentResponse = await fetch(`${state.backendUrl}/current-model`);
-        const currentData = await currentResponse.json();
-        state.currentProvider = currentData.provider;
-        state.currentModel = currentData.model;
+        // If we already have a saved model preference, use it and sync to backend
+        if (state.currentProvider && state.currentModel) {
+            // Verify the saved model still exists
+            const provider = state.providers.find(p => p.id === state.currentProvider);
+            const modelExists = provider && provider.models.some(m => m.id === state.currentModel);
+            
+            if (modelExists) {
+                // Sync saved model to backend
+                await setModel(state.currentProvider, state.currentModel);
+            } else {
+                // Saved model no longer exists, fall back to backend's current
+                const currentResponse = await fetch(`${state.backendUrl}/current-model`);
+                const currentData = await currentResponse.json();
+                state.currentProvider = currentData.provider;
+                state.currentModel = currentData.model;
+            }
+        } else {
+            // No saved preference, get current model from backend
+            const currentResponse = await fetch(`${state.backendUrl}/current-model`);
+            const currentData = await currentResponse.json();
+            state.currentProvider = currentData.provider;
+            state.currentModel = currentData.model;
+        }
         
         updateProviderDropdowns();
     } catch (e) {
@@ -260,6 +278,9 @@ async function setModel(provider, modelId) {
             state.currentProvider = provider;
             state.currentModel = modelId;
             console.log(`Model set to ${provider}/${modelId}`);
+            
+            // Save model preference
+            await window.electronAPI.updateSetting('lastModel', { provider, modelId });
         }
     } catch (e) {
         console.error('Failed to set model:', e);
@@ -297,10 +318,16 @@ async function apiRequest(endpoint, data) {
 // PDF Loading and Rendering
 // ============================================
 
-async function loadPDF(filePath) {
+async function loadPDF(filePath, restoreState = null) {
     showLoading('Loading PDF...');
     
     try {
+        // Check if file exists
+        const exists = await window.electronAPI.fileExists(filePath);
+        if (!exists) {
+            throw new Error('File not found');
+        }
+        
         // Read file as buffer
         const buffer = await window.electronAPI.readFileBuffer(filePath);
         if (!buffer) {
@@ -323,6 +350,11 @@ async function loadPDF(filePath) {
         elements.pagesContainer.innerHTML = '';
         elements.pagesContainer.style.display = 'block';
         
+        // Restore zoom level if provided
+        if (restoreState && restoreState.zoomLevel) {
+            state.zoomLevel = restoreState.zoomLevel;
+        }
+        
         // Load existing chat data
         await loadChatData();
         
@@ -332,14 +364,26 @@ async function loadPDF(filePath) {
         // Setup scroll listener for page tracking
         setupScrollListener();
         
+        // Restore scroll position if provided
+        if (restoreState && restoreState.scrollTop !== undefined) {
+            setTimeout(() => {
+                elements.pdfContainer.scrollTop = restoreState.scrollTop;
+            }, 100);
+        }
+        
+        // Save as last opened PDF
+        await window.electronAPI.updateSetting('lastPDF', filePath);
+        
         hideLoading();
     } catch (error) {
         console.error('Error loading PDF:', error);
         hideLoading();
-        alert('Failed to load PDF: ' + error.message);
+        // Only show alert if not restoring (don't annoy user on startup)
+        if (!restoreState) {
+            alert('Failed to load PDF: ' + error.message);
+        }
     }
 }
-
 async function renderAllPages() {
     if (!state.pdfDoc) return;
     
@@ -1440,11 +1484,61 @@ function initEventListeners() {
 // Initialization
 // ============================================
 
+async function saveViewState() {
+    if (!state.pdfPath) return;
+    
+    await window.electronAPI.updateSetting('viewState', {
+        scrollTop: elements.pdfContainer.scrollTop,
+        zoomLevel: state.zoomLevel
+    });
+}
+
+async function loadSavedSettings() {
+    try {
+        const settings = await window.electronAPI.getSettings();
+        
+        // Restore last model selection into state (before provider dropdown is populated)
+        if (settings.lastModel) {
+            state.currentProvider = settings.lastModel.provider;
+            state.currentModel = settings.lastModel.modelId;
+        }
+        
+        return settings;
+    } catch (e) {
+        console.error('Failed to load settings:', e);
+        return {};
+    }
+}
+
+async function restoreLastPDF(settings) {
+    try {
+        // Restore last PDF if it exists
+        if (settings.lastPDF) {
+            const exists = await window.electronAPI.fileExists(settings.lastPDF);
+            if (exists) {
+                await loadPDF(settings.lastPDF, settings.viewState);
+            }
+        }
+    } catch (e) {
+        console.error('Failed to restore last PDF:', e);
+    }
+}
+
 async function init() {
     initEventListeners();
     
-    // Check backend connection
+    // Load saved settings first (sets state.currentModel before dropdown is populated)
+    const settings = await loadSavedSettings();
+    
+    // Check backend connection (this loads providers and populates dropdowns)
     await checkBackendConnection();
+    
+    // Restore last opened PDF
+    await restoreLastPDF(settings);
+    
+    // Save view state periodically and before unload
+    setInterval(saveViewState, 5000);
+    window.addEventListener('beforeunload', saveViewState);
     
     // Retry connection every 5 seconds if disconnected
     setInterval(() => {

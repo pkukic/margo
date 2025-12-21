@@ -4,6 +4,31 @@ const fs = require('fs');
 
 let mainWindow;
 
+// Settings file path in user data directory
+const settingsPath = path.join(app.getPath('userData'), 'margo-settings.json');
+
+function loadSettings() {
+    try {
+        if (fs.existsSync(settingsPath)) {
+            const data = fs.readFileSync(settingsPath, 'utf-8');
+            return JSON.parse(data);
+        }
+    } catch (err) {
+        console.error('Error loading settings:', err);
+    }
+    return {};
+}
+
+function saveSettings(settings) {
+    try {
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        return true;
+    } catch (err) {
+        console.error('Error saving settings:', err);
+        return false;
+    }
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1920,
@@ -114,4 +139,19 @@ ipcMain.handle('get-path-info', async (event, filePath) => {
         extname: path.extname(filePath),
         name: path.basename(filePath, path.extname(filePath))
     };
+});
+
+// Settings handlers
+ipcMain.handle('get-settings', async () => {
+    return loadSettings();
+});
+
+ipcMain.handle('save-settings', async (event, settings) => {
+    return saveSettings(settings);
+});
+
+ipcMain.handle('update-setting', async (event, key, value) => {
+    const settings = loadSettings();
+    settings[key] = value;
+    return saveSettings(settings);
 });

@@ -7,5 +7,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readFileBase64: (filePath) => ipcRenderer.invoke('read-file-base64', filePath),
     readFileBuffer: (filePath) => ipcRenderer.invoke('read-file-buffer', filePath),
     fileExists: (filePath) => ipcRenderer.invoke('file-exists', filePath),
-    getPathInfo: (filePath) => ipcRenderer.invoke('get-path-info', filePath)
+    getPathInfo: (filePath) => ipcRenderer.invoke('get-path-info', filePath),
+    
+    // Settings operations
+    getSettings: () => ipcRenderer.invoke('get-settings'),
+    saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+    updateSetting: (key, value) => ipcRenderer.invoke('update-setting', key, value)
 });
