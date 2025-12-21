@@ -8,7 +8,6 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1920,
         height: 1080,
-        fullscreen: true,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -16,6 +15,9 @@ function createWindow() {
         },
         icon: path.join(__dirname, 'assets', 'icon.png')
     });
+
+    // Maximize window on start (keeps window decorations)
+    mainWindow.maximize();
 
     mainWindow.loadFile('index.html');
 
