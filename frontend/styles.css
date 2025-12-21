@@ -200,11 +200,37 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: 20px;
+    padding-bottom: 40px;
 }
 
-#pdf-canvas {
+#pages-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.pdf-page-wrapper {
+    position: relative;
+}
+
+.pdf-page-canvas {
     box-shadow: 0 4px 20px var(--shadow);
     background: white;
+    display: block;
+}
+
+.page-number-label {
+    position: absolute;
+    bottom: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    padding: 2px 8px;
+    border-radius: 4px;
 }
 
 #welcome-message {

@@ -59,7 +59,7 @@ const elements = {
     // PDF Viewer
     pdfContainer: document.getElementById('pdf-container'),
     pdfViewer: document.getElementById('pdf-viewer'),
-    pdfCanvas: document.getElementById('pdf-canvas'),
+    pagesContainer: document.getElementById('pages-container'),
     welcomeMessage: document.getElementById('welcome-message'),
     selectionOverlay: document.getElementById('selection-overlay'),
     selectionBox: document.getElementById('selection-box'),
@@ -314,13 +314,17 @@ async function loadPDF(filePath) {
         const pathInfo = await window.electronAPI.getPathInfo(filePath);
         elements.fileName.textContent = pathInfo.basename;
         elements.welcomeMessage.classList.add('hidden');
-        elements.pdfCanvas.style.display = 'block';
+        elements.pagesContainer.innerHTML = '';
+        elements.pagesContainer.style.display = 'block';
         
         // Load existing chat data
         await loadChatData();
         
-        // Render first page
-        await renderPage(state.currentPage);
+        // Render all pages for continuous scrolling
+        await renderAllPages();
+        
+        // Setup scroll listener for page tracking
+        setupScrollListener();
         
         hideLoading();
     } catch (error) {
@@ -330,24 +334,125 @@ async function loadPDF(filePath) {
     }
 }
 
-async function renderPage(pageNum) {
+async function renderAllPages() {
     if (!state.pdfDoc) return;
     
+    const dpr = window.devicePixelRatio || 1;
+    
+    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
+        const page = await state.pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: state.scale });
+        
+        // Create wrapper div for this page
+        const pageWrapper = document.createElement('div');
+        pageWrapper.className = 'pdf-page-wrapper';
+        pageWrapper.dataset.pageNum = pageNum;
+        
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        canvas.className = 'pdf-page-canvas';
+        canvas.dataset.pageNum = pageNum;
+        
+        // Set canvas dimensions for high DPI
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        
+        // Set CSS dimensions (actual display size)
+        canvas.style.width = Math.floor(viewport.width) + 'px';
+        canvas.style.height = Math.floor(viewport.height) + 'px';
+        
+        const context = canvas.getContext('2d');
+        context.scale(dpr, dpr);
+        
+        pageWrapper.appendChild(canvas);
+        
+        // Add page number label
+        const pageLabel = document.createElement('div');
+        pageLabel.className = 'page-number-label';
+        pageLabel.textContent = `Page ${pageNum}`;
+        pageWrapper.appendChild(pageLabel);
+        
+        elements.pagesContainer.appendChild(pageWrapper);
+        
+        // Render page
+        await page.render({
+            canvasContext: context,
+            viewport: viewport
+        }).promise;
+    }
+    
+    // Update page info
+    updatePageInfo(1);
+}
+
+async function renderPage(pageNum) {
+    // For re-rendering a single page (e.g., after zoom change)
+    if (!state.pdfDoc) return;
+    
+    const pageWrapper = elements.pagesContainer.querySelector(`[data-page-num="${pageNum}"]`);
+    if (!pageWrapper) return;
+    
+    const canvas = pageWrapper.querySelector('canvas');
+    if (!canvas) return;
+    
+    const dpr = window.devicePixelRatio || 1;
     const page = await state.pdfDoc.getPage(pageNum);
     const viewport = page.getViewport({ scale: state.scale });
     
-    const canvas = elements.pdfCanvas;
-    const context = canvas.getContext('2d');
+    // Set canvas dimensions for high DPI
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
     
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    // Set CSS dimensions (actual display size)
+    canvas.style.width = Math.floor(viewport.width) + 'px';
+    canvas.style.height = Math.floor(viewport.height) + 'px';
+    
+    const context = canvas.getContext('2d');
+    context.scale(dpr, dpr);
     
     await page.render({
         canvasContext: context,
         viewport: viewport
     }).promise;
+}
+
+async function reRenderAllPages() {
+    if (!state.pdfDoc) return;
     
-    // Update page info
+    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
+        await renderPage(pageNum);
+    }
+    updatePageInfo(state.currentPage);
+}
+
+function setupScrollListener() {
+    elements.pdfContainer.addEventListener('scroll', () => {
+        const scrollTop = elements.pdfContainer.scrollTop;
+        const containerRect = elements.pdfContainer.getBoundingClientRect();
+        const viewerCenter = scrollTop + containerRect.height / 2;
+        
+        // Find which page is most visible
+        const pageWrappers = elements.pagesContainer.querySelectorAll('.pdf-page-wrapper');
+        let currentPage = 1;
+        
+        for (const wrapper of pageWrappers) {
+            const offsetTop = wrapper.offsetTop;
+            const height = wrapper.offsetHeight;
+            
+            if (offsetTop + height / 2 > viewerCenter) {
+                break;
+            }
+            currentPage = parseInt(wrapper.dataset.pageNum);
+        }
+        
+        if (currentPage !== state.currentPage) {
+            state.currentPage = currentPage;
+            updatePageInfo(currentPage);
+        }
+    });
+}
+
+function updatePageInfo(pageNum) {
     elements.pageInfo.textContent = `Page ${pageNum} / ${state.totalPages}`;
     elements.zoomLevel.textContent = `${Math.round(state.scale * 100)}%`;
     
@@ -492,24 +597,58 @@ async function handleSelectionEnd(e) {
 }
 
 function captureCanvasRegion(x, y, width, height) {
-    // Account for scroll position of the PDF container
+    // Find which canvas is under the selection
+    const dpr = window.devicePixelRatio || 1;
     const containerRect = elements.pdfContainer.getBoundingClientRect();
-    const canvasRect = elements.pdfCanvas.getBoundingClientRect();
+    const scrollTop = elements.pdfContainer.scrollTop;
     
-    // Calculate position relative to canvas
-    const canvasX = x - (canvasRect.left - containerRect.left) + elements.pdfContainer.scrollLeft;
-    const canvasY = y - (canvasRect.top - containerRect.top) + elements.pdfContainer.scrollTop;
+    // Adjust selection coordinates relative to the container
+    const absoluteX = x;
+    const absoluteY = y + scrollTop;
     
-    // Create temporary canvas
+    // Find the canvas at this position
+    const pageWrappers = elements.pagesContainer.querySelectorAll('.pdf-page-wrapper');
+    let targetCanvas = null;
+    let canvasOffsetY = 0;
+    
+    for (const wrapper of pageWrappers) {
+        const wrapperTop = wrapper.offsetTop;
+        const wrapperBottom = wrapperTop + wrapper.offsetHeight;
+        
+        if (absoluteY >= wrapperTop && absoluteY < wrapperBottom) {
+            targetCanvas = wrapper.querySelector('canvas');
+            canvasOffsetY = wrapperTop;
+            break;
+        }
+    }
+    
+    if (!targetCanvas) {
+        // Fallback to first canvas
+        targetCanvas = elements.pagesContainer.querySelector('canvas');
+        canvasOffsetY = 0;
+    }
+    
+    // Get canvas position and calculate relative coordinates
+    const canvasRect = targetCanvas.getBoundingClientRect();
+    
+    // Calculate position relative to this canvas (accounting for DPI scaling)
+    const canvasX = (x - (canvasRect.left - containerRect.left)) * dpr;
+    const canvasY = (y - (canvasRect.top - containerRect.top)) * dpr;
+    
+    // Capture dimensions scaled by DPI
+    const captureWidth = width * dpr;
+    const captureHeight = height * dpr;
+    
+    // Create temporary canvas at display resolution (not scaled)
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = width;
     tempCanvas.height = height;
     const tempCtx = tempCanvas.getContext('2d');
     
-    // Draw the region
+    // Draw the region (source is at DPI scale, dest is at display scale)
     tempCtx.drawImage(
-        elements.pdfCanvas,
-        canvasX, canvasY, width, height,
+        targetCanvas,
+        canvasX, canvasY, captureWidth, captureHeight,
         0, 0, width, height
     );
     
@@ -928,28 +1067,37 @@ async function deleteCurrentAnnotation() {
 // Navigation and Zoom
 // ============================================
 
+function scrollToPage(pageNum) {
+    const pageWrapper = elements.pagesContainer.querySelector(`[data-page-num="${pageNum}"]`);
+    if (pageWrapper) {
+        pageWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
 function prevPage() {
     if (state.currentPage > 1) {
         state.currentPage--;
-        renderPage(state.currentPage);
+        scrollToPage(state.currentPage);
+        updatePageInfo(state.currentPage);
     }
 }
 
 function nextPage() {
     if (state.currentPage < state.totalPages) {
         state.currentPage++;
-        renderPage(state.currentPage);
+        scrollToPage(state.currentPage);
+        updatePageInfo(state.currentPage);
     }
 }
 
 function zoomIn() {
     state.scale = Math.min(state.scale + 0.25, 4);
-    renderPage(state.currentPage);
+    reRenderAllPages();
 }
 
 function zoomOut() {
     state.scale = Math.max(state.scale - 0.25, 0.5);
-    renderPage(state.currentPage);
+    reRenderAllPages();
 }
 
 function fitToWidth() {
@@ -961,7 +1109,7 @@ function fitToWidth() {
     state.pdfDoc.getPage(state.currentPage).then(page => {
         const viewport = page.getViewport({ scale: 1 });
         state.scale = containerWidth / viewport.width;
-        renderPage(state.currentPage);
+        reRenderAllPages();
     });
 }
 
