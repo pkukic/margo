@@ -49,6 +49,7 @@ class Annotation:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     # For screenshot annotations
     bounding_box: Optional[dict] = None  # {x, y, width, height} in PDF coordinates
+    image_base64: Optional[str] = None  # Screenshot image data
     # Chat messages for this annotation
     messages: List[Message] = field(default_factory=list)
     
@@ -58,6 +59,7 @@ class Annotation:
             "page_number": self.page_number,
             "created_at": self.created_at,
             "bounding_box": self.bounding_box,
+            "image_base64": self.image_base64,
             "messages": [m.to_dict() for m in self.messages]
         }
     
@@ -68,6 +70,7 @@ class Annotation:
             page_number=data["page_number"],
             created_at=data.get("created_at", datetime.now().isoformat()),
             bounding_box=data.get("bounding_box"),
+            image_base64=data.get("image_base64"),
             messages=[Message.from_dict(m) for m in data.get("messages", [])]
         )
 
@@ -170,7 +173,8 @@ class ChatStorage:
         pdf_path: str,
         annotation_id: str,
         page_number: int,
-        bounding_box: Optional[dict] = None
+        bounding_box: Optional[dict] = None,
+        image_base64: Optional[str] = None
     ) -> Annotation:
         """Get or create an annotation."""
         chat_file = self.get_or_create_chat_file(pdf_path)
@@ -181,7 +185,8 @@ class ChatStorage:
         annotation = Annotation(
             id=annotation_id,
             page_number=page_number,
-            bounding_box=bounding_box
+            bounding_box=bounding_box,
+            image_base64=image_base64
         )
         chat_file.annotations[annotation_id] = annotation
         return annotation

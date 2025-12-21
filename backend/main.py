@@ -159,7 +159,8 @@ async def ask_question(request: AskRequest):
             pdf_path=request.pdf_path,
             annotation_id=request.annotation_id,
             page_number=request.page_number,
-            bounding_box=request.bounding_box
+            bounding_box=request.bounding_box,
+            image_base64=request.image_base64
         )
         
         # Add messages to the annotation

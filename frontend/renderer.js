@@ -365,11 +365,11 @@ async function loadPDF(filePath, restoreState = null) {
             state.zoomLevel = restoreState.zoomLevel;
         }
         
-        // Load existing chat data
-        await loadChatData();
-        
-        // Render all pages for continuous scrolling
+        // Render all pages for continuous scrolling (must happen before loading chat data)
         await renderAllPages();
+        
+        // Load existing chat data (after pages are rendered so overlays can be placed)
+        await loadChatData();
         
         // Setup scroll listener for page tracking
         setupScrollListener();
