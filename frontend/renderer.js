@@ -32,6 +32,13 @@ const state = {
     annotations: {},
     currentAnnotationId: null,
     
+    // Auto-open annotations in view
+    visibleAnnotationIds: [],
+    maxVisibleAnnotations: 3,
+    
+    // Sidebar state
+    isSidebarOpen: false,
+    
     // Backend connection
     backendUrl: 'http://127.0.0.1:8765',
     isConnected: false,
@@ -71,6 +78,8 @@ const elements = {
     selectionBox: document.getElementById('selection-box'),
     
     // Sidebar
+    sidebar: document.getElementById('sidebar'),
+    btnToggleSidebar: document.getElementById('btn-toggle-sidebar'),
     annotationsList: document.getElementById('annotations-list'),
     noAnnotations: document.getElementById('no-annotations'),
     
@@ -85,6 +94,10 @@ const elements = {
     chatMessages: document.getElementById('chat-messages'),
     chatInput: document.getElementById('chat-input'),
     btnSend: document.getElementById('btn-send'),
+    
+    // Floating annotations
+    floatingAnnotationsContainer: document.getElementById('floating-annotations-container'),
+    annotationArrows: document.getElementById('annotation-arrows'),
     
     // Loading
     loadingOverlay: document.getElementById('loading-overlay'),
@@ -742,6 +755,9 @@ function setupScrollListener() {
             state.currentPage = currentPage;
             updatePageInfo(currentPage);
         }
+        
+        // Update visible annotations based on scroll position
+        updateVisibleAnnotations();
     });
 }
 
@@ -1123,6 +1139,250 @@ function updateAnnotationOverlayStates() {
     });
 }
 
+// ============================================
+// Auto-Open Annotations on Scroll
+// ============================================
+
+function updateVisibleAnnotations() {
+    const containerRect = elements.pdfContainer.getBoundingClientRect();
+    const viewportTop = containerRect.top;
+    const viewportBottom = containerRect.bottom;
+    const viewportCenter = (viewportTop + viewportBottom) / 2;
+    const viewportHeight = viewportBottom - viewportTop;
+    
+    // Calculate visibility score for each annotation
+    const annotationScores = [];
+    
+    for (const annotation of Object.values(state.annotations)) {
+        const overlay = document.querySelector(
+            `.annotation-overlay[data-annotation-id="${annotation.id}"]`
+        );
+        if (!overlay) continue;
+        
+        const overlayRect = overlay.getBoundingClientRect();
+        
+        // Check if annotation is in viewport
+        const isInView = overlayRect.bottom > viewportTop && overlayRect.top < viewportBottom;
+        if (!isInView) continue;
+        
+        // Calculate distance from center of viewport (lower = better)
+        const overlayCenter = (overlayRect.top + overlayRect.bottom) / 2;
+        const distanceFromCenter = Math.abs(overlayCenter - viewportCenter);
+        
+        // Calculate how much of the annotation is visible (0-1)
+        const visibleTop = Math.max(overlayRect.top, viewportTop);
+        const visibleBottom = Math.min(overlayRect.bottom, viewportBottom);
+        const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+        const visibilityRatio = visibleHeight / overlayRect.height;
+        
+        // Score: higher visibility + closer to center = better
+        const score = visibilityRatio * 1000 - distanceFromCenter;
+        
+        annotationScores.push({
+            annotation,
+            score,
+            distanceFromCenter,
+            overlayRect
+        });
+    }
+    
+    // Sort by score (highest first) and take top N
+    annotationScores.sort((a, b) => b.score - a.score);
+    const topAnnotations = annotationScores.slice(0, state.maxVisibleAnnotations);
+    const newVisibleIds = topAnnotations.map(a => a.annotation.id);
+    
+    // Check if visible annotations changed
+    const oldIds = [...state.visibleAnnotationIds].sort().join(',');
+    const newIds = [...newVisibleIds].sort().join(',');
+    
+    if (oldIds !== newIds) {
+        state.visibleAnnotationIds = newVisibleIds;
+        renderFloatingAnnotations();
+    } else {
+        // Just update arrow positions
+        updateAnnotationArrows();
+    }
+}
+
+function renderFloatingAnnotations() {
+    elements.floatingAnnotationsContainer.innerHTML = '';
+    
+    // Show floating bubbles only when sidebar is collapsed
+    if (!state.isSidebarOpen) {
+        elements.floatingAnnotationsContainer.classList.remove('hidden');
+        elements.floatingAnnotationsContainer.classList.add('sidebar-collapsed');
+    } else {
+        elements.floatingAnnotationsContainer.classList.add('hidden');
+    }
+    
+    // Always show arrows (they point to sidebar cards or floating bubbles)
+    elements.annotationArrows.classList.remove('hidden');
+    
+    for (const annotationId of state.visibleAnnotationIds) {
+        const annotation = state.annotations[annotationId];
+        if (!annotation) continue;
+        
+        const floatingEl = createFloatingAnnotation(annotation);
+        elements.floatingAnnotationsContainer.appendChild(floatingEl);
+    }
+    
+    // Update arrows after DOM is ready
+    requestAnimationFrame(() => {
+        updateAnnotationArrows();
+    });
+}
+
+function createFloatingAnnotation(annotation) {
+    const div = document.createElement('div');
+    div.className = 'floating-annotation';
+    div.dataset.annotationId = annotation.id;
+    
+    if (annotation.id === state.currentAnnotationId) {
+        div.classList.add('active');
+    }
+    
+    // Preview content
+    let previewHtml = '';
+    if (annotation.image_base64) {
+        previewHtml = `<img src="data:image/png;base64,${annotation.image_base64}" alt="Selection">`;
+    } else if (annotation.selected_text) {
+        previewHtml = `<p>${escapeHtml(annotation.selected_text)}</p>`;
+    }
+    
+    // First question
+    let questionHtml = '';
+    if (annotation.messages && annotation.messages.length > 0) {
+        const userMessages = annotation.messages.filter(m => m.role === 'user');
+        if (userMessages.length > 0) {
+            const firstQ = userMessages[0].content.substring(0, 80);
+            questionHtml = `<p class="floating-annotation-question">"${escapeHtml(firstQ)}${userMessages[0].content.length > 80 ? '...' : ''}"</p>`;
+        }
+    }
+    
+    const messageCount = annotation.messages ? annotation.messages.length : 0;
+    
+    div.innerHTML = `
+        <div class="floating-annotation-header">
+            <span class="floating-annotation-page">Page ${annotation.page_number}</span>
+            <button class="floating-annotation-close" title="Close">&times;</button>
+        </div>
+        <div class="floating-annotation-preview">
+            ${previewHtml}
+        </div>
+        ${questionHtml}
+        <span class="floating-annotation-messages">${messageCount} message${messageCount !== 1 ? 's' : ''}</span>
+    `;
+    
+    // Click to expand sidebar and scroll to annotation card
+    div.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('floating-annotation-close')) {
+            // Expand sidebar if collapsed
+            if (!state.isSidebarOpen) {
+                toggleSidebar();
+            }
+            // Scroll to the annotation card in sidebar after sidebar animation
+            setTimeout(() => {
+                const card = elements.annotationsList.querySelector(
+                    `.annotation-card[data-id="${annotation.id}"]`
+                );
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.classList.add('highlight');
+                    setTimeout(() => card.classList.remove('highlight'), 1500);
+                }
+                // Update arrows to point to sidebar cards
+                updateAnnotationArrows();
+            }, 350);
+        }
+    });
+    
+    // Close button
+    div.querySelector('.floating-annotation-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Remove from visible list
+        state.visibleAnnotationIds = state.visibleAnnotationIds.filter(id => id !== annotation.id);
+        renderFloatingAnnotations();
+    });
+    
+    return div;
+}
+
+function updateAnnotationArrows() {
+    const svg = elements.annotationArrows;
+    svg.innerHTML = '';
+    
+    // Don't draw arrows if no visible annotations
+    if (state.visibleAnnotationIds.length === 0) return;
+    
+    for (const annotationId of state.visibleAnnotationIds) {
+        const overlay = document.querySelector(
+            `.annotation-overlay[data-annotation-id="${annotationId}"]`
+        );
+        
+        if (!overlay) continue;
+        
+        const overlayRect = overlay.getBoundingClientRect();
+        
+        // Start point: right edge of annotation overlay
+        const startX = overlayRect.right;
+        const startY = overlayRect.top + overlayRect.height / 2;
+        
+        let endX, endY;
+        
+        if (state.isSidebarOpen) {
+            // Point to annotation card in sidebar
+            const card = elements.annotationsList.querySelector(
+                `.annotation-card[data-id="${annotationId}"]`
+            );
+            if (!card) continue;
+            
+            const cardRect = card.getBoundingClientRect();
+            // Skip if card is not visible in viewport
+            if (cardRect.height === 0 || cardRect.top > window.innerHeight || cardRect.bottom < 0) continue;
+            
+            endX = cardRect.left;
+            endY = cardRect.top + cardRect.height / 2;
+        } else {
+            // Point to floating annotation bubble
+            const floatingEl = elements.floatingAnnotationsContainer.querySelector(
+                `.floating-annotation[data-annotation-id="${annotationId}"]`
+            );
+            if (!floatingEl) continue;
+            
+            const floatingRect = floatingEl.getBoundingClientRect();
+            // Skip if floating element is not visible
+            if (floatingRect.width === 0 || floatingRect.height === 0) continue;
+            
+            endX = floatingRect.left;
+            endY = floatingRect.top + floatingRect.height / 2;
+        }
+        
+        // Create curved path
+        const midX = (startX + endX) / 2;
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', 'annotation-arrow');
+        path.setAttribute('d', `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`);
+        svg.appendChild(path);
+        
+        // Arrow head
+        const arrowSize = 6;
+        const arrowHead = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        arrowHead.setAttribute('class', 'annotation-arrow-head');
+        arrowHead.setAttribute('points', `
+            ${endX} ${endY},
+            ${endX - arrowSize} ${endY - arrowSize},
+            ${endX - arrowSize} ${endY + arrowSize}
+        `);
+        svg.appendChild(arrowHead);
+    }
+}
+
+function clearFloatingAnnotations() {
+    state.visibleAnnotationIds = [];
+    elements.floatingAnnotationsContainer.innerHTML = '';
+    elements.annotationArrows.innerHTML = '';
+}
+
 function scrollToAnnotation(annotation) {
     const pageWrapper = elements.pagesContainer.querySelector(
         `.pdf-page-wrapper[data-page-num="${annotation.page_number}"]`
@@ -1143,6 +1403,31 @@ function scrollToAnnotation(annotation) {
         // Scroll to the page
         pageWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+}
+
+// ============================================
+// Sidebar Toggle
+// ============================================
+
+function toggleSidebar() {
+    state.isSidebarOpen = !state.isSidebarOpen;
+    
+    if (state.isSidebarOpen) {
+        elements.sidebar.classList.remove('collapsed');
+        // Hide floating bubbles when sidebar is expanded (arrows will point to sidebar cards)
+        elements.floatingAnnotationsContainer.classList.add('hidden');
+        elements.floatingAnnotationsContainer.classList.remove('sidebar-collapsed');
+    } else {
+        elements.sidebar.classList.add('collapsed');
+        // Show floating bubbles when sidebar is collapsed
+        elements.floatingAnnotationsContainer.classList.remove('hidden');
+        elements.floatingAnnotationsContainer.classList.add('sidebar-collapsed');
+    }
+    
+    // Update arrows after transition (they'll point to sidebar cards or floating bubbles)
+    setTimeout(() => {
+        updateAnnotationArrows();
+    }, 300);
 }
 
 // ============================================
@@ -1251,6 +1536,11 @@ function openAnnotationChat(annotationId) {
     // Update active state on overlays
     updateAnnotationOverlayStates();
     
+    // Update active state on floating annotations
+    document.querySelectorAll('.floating-annotation').forEach(el => {
+        el.classList.toggle('active', el.dataset.annotationId === annotationId);
+    });
+    
     // Update chat panel
     elements.chatTitle.textContent = `Page ${annotation.page_number} Annotation`;
     
@@ -1286,6 +1576,11 @@ function closeChatPanel() {
     
     // Remove active state from overlays
     updateAnnotationOverlayStates();
+    
+    // Remove active state from floating annotations
+    document.querySelectorAll('.floating-annotation').forEach(el => {
+        el.classList.remove('active');
+    });
 }
 
 function renderChatMessages(messages) {
@@ -1702,6 +1997,9 @@ function initEventListeners() {
     elements.btnDeleteAnnotation.addEventListener('click', deleteCurrentAnnotation);
     elements.btnSend.addEventListener('click', sendMessage);
     
+    // Sidebar toggle
+    elements.btnToggleSidebar.addEventListener('click', toggleSidebar);
+    
     elements.chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -1715,6 +2013,12 @@ function initEventListeners() {
         if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
         
         switch (e.key) {
+            case 'a':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    toggleSidebar();
+                }
+                break;
             case 'o':
                 if (e.ctrlKey) {
                     e.preventDefault();
@@ -1821,6 +2125,10 @@ async function restoreLastPDF(settings) {
 async function init() {
     initEventListeners();
     
+    // Set initial sidebar state (collapsed by default)
+    elements.sidebar.classList.add('collapsed');
+    elements.floatingAnnotationsContainer.classList.add('sidebar-collapsed');
+    
     // Get backend port from main process (dynamic port for each instance)
     try {
         const port = await window.electronAPI.getBackendPort();
@@ -1859,6 +2167,11 @@ async function init() {
     // Save view state periodically and before unload
     setInterval(saveViewState, 5000);
     window.addEventListener('beforeunload', saveViewState);
+    
+    // Update annotation arrows on resize
+    window.addEventListener('resize', () => {
+        updateAnnotationArrows();
+    });
     
     // Retry connection every 5 seconds if disconnected
     setInterval(() => {

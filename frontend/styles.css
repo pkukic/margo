@@ -433,6 +433,27 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    transition: width 0.3s ease;
+}
+
+#sidebar.collapsed {
+    width: 48px;
+    min-width: 48px;
+}
+
+#sidebar.collapsed #sidebar-header {
+    padding: 12px 8px;
+    justify-content: center;
+}
+
+#sidebar.collapsed #sidebar-header h2 {
+    display: none;
+}
+
+#sidebar.collapsed #annotations-list {
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
 }
 
 #sidebar-header {
@@ -446,6 +467,19 @@ html, body {
 #sidebar-header h2 {
     font-size: 16px;
     font-weight: 600;
+}
+
+/* Toggle sidebar button */
+#btn-toggle-sidebar {
+    flex-shrink: 0;
+}
+
+#btn-toggle-sidebar svg {
+    transition: transform 0.3s ease;
+}
+
+#sidebar.collapsed #btn-toggle-sidebar svg {
+    transform: rotate(180deg);
 }
 
 .icon-btn {
@@ -514,6 +548,20 @@ html, body {
     background: rgba(232, 197, 71, 0.15);
 }
 
+.annotation-card.highlight {
+    animation: cardHighlight 1.5s ease;
+}
+
+@keyframes cardHighlight {
+    0%, 100% {
+        background: var(--bg-tertiary);
+    }
+    25%, 75% {
+        background: rgba(232, 197, 71, 0.3);
+        border-color: var(--accent);
+    }
+}
+
 .annotation-card-header {
     display: flex;
     align-items: center;
@@ -562,11 +610,28 @@ html, body {
     flex-direction: column;
     z-index: 200;
     transform: translateX(0);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 #chat-panel.hidden {
     transform: translateX(100%);
+}
+
+/* Auto-opened chat panel has a subtle glow animation */
+#chat-panel.auto-opened {
+    animation: chatPanelGlow 0.5s ease;
+}
+
+@keyframes chatPanelGlow {
+    0% {
+        box-shadow: -10px 0 30px rgba(232, 197, 71, 0.3);
+    }
+    50% {
+        box-shadow: -10px 0 40px rgba(232, 197, 71, 0.5);
+    }
+    100% {
+        box-shadow: none;
+    }
 }
 
 #chat-header {
@@ -918,4 +983,163 @@ html, body {
 .message-edit-actions .cancel-btn:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
+}
+
+/* Floating Annotation Previews */
+#floating-annotations-container {
+    position: fixed;
+    top: var(--toolbar-height);
+    right: calc(var(--sidebar-width) + 20px);
+    width: 280px;
+    max-height: calc(100vh - var(--toolbar-height) - 40px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 150;
+    pointer-events: none;
+    padding: 20px 0;
+    transition: opacity 0.2s ease, transform 0.2s ease, right 0.3s ease;
+}
+
+/* Adjust floating annotations when sidebar is collapsed (48px thin bar) */
+#floating-annotations-container.sidebar-collapsed {
+    right: 68px; /* 48px sidebar + 20px gap */
+}
+
+#floating-annotations-container.hidden,
+#annotation-arrows.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.floating-annotation {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 4px 20px var(--shadow);
+    pointer-events: auto;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.floating-annotation:hover {
+    border-color: var(--accent);
+    box-shadow: 0 6px 24px var(--shadow);
+}
+
+.floating-annotation.active {
+    border-color: var(--accent);
+    border-width: 2px;
+}
+
+.floating-annotation-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.floating-annotation-page {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.floating-annotation-close {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.floating-annotation-close:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.floating-annotation-preview {
+    margin-bottom: 8px;
+}
+
+.floating-annotation-preview img {
+    width: 100%;
+    max-height: 80px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.floating-annotation-preview p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.4;
+}
+
+.floating-annotation-question {
+    font-size: 12px;
+    color: var(--text-primary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.4;
+    font-style: italic;
+}
+
+.floating-annotation-messages {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+/* Annotation Arrows SVG */
+.annotation-arrows-svg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 145;
+}
+
+.annotation-arrow {
+    fill: none;
+    stroke: #d28c32;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.8;
+}
+
+.annotation-arrow-head {
+    fill: #d28c32;
+    stroke: none;
+    opacity: 0.8;
 }
