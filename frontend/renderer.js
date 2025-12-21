@@ -35,6 +35,7 @@ const state = {
     // Auto-open annotations in view
     visibleAnnotationIds: [],
     maxVisibleAnnotations: 3,
+    autoOpenedAnnotationId: null, // Track which annotation was auto-opened
     
     // Sidebar state
     isSidebarOpen: false,
@@ -1191,6 +1192,29 @@ function updateVisibleAnnotations() {
     const topAnnotations = annotationScores.slice(0, state.maxVisibleAnnotations);
     const newVisibleIds = topAnnotations.map(a => a.annotation.id);
     
+    // Auto-open chat for annotation very close to center (within 20% of viewport height)
+    // Only if chat panel is currently hidden
+    if (elements.chatPanel.classList.contains('hidden') && topAnnotations.length > 0) {
+        const closest = topAnnotations[0];
+        const threshold = viewportHeight * 0.20;
+        
+        if (closest.distanceFromCenter < threshold) {
+            // Auto-open this annotation's chat
+            autoOpenAnnotationChat(closest.annotation.id);
+        }
+    }
+    
+    // Auto-close chat if current annotation scrolled far away from center
+    if (state.currentAnnotationId && state.autoOpenedAnnotationId === state.currentAnnotationId) {
+        const currentInView = annotationScores.find(a => a.annotation.id === state.currentAnnotationId);
+        const closeThreshold = viewportHeight * 0.5; // Close when 50% away from center
+        
+        if (!currentInView || currentInView.distanceFromCenter > closeThreshold) {
+            closeChatPanel();
+            state.autoOpenedAnnotationId = null;
+        }
+    }
+    
     // Check if visible annotations changed
     const oldIds = [...state.visibleAnnotationIds].sort().join(',');
     const newIds = [...newVisibleIds].sort().join(',');
@@ -1202,6 +1226,21 @@ function updateVisibleAnnotations() {
         // Just update arrow positions
         updateAnnotationArrows();
     }
+}
+
+// Auto-open chat when annotation approaches center of screen
+function autoOpenAnnotationChat(annotationId) {
+    const annotation = state.annotations[annotationId];
+    if (!annotation) return;
+    
+    // Don't auto-open if already showing this annotation
+    if (state.currentAnnotationId === annotationId) return;
+    
+    // Track that this was auto-opened (so we can auto-close it)
+    state.autoOpenedAnnotationId = annotationId;
+    
+    // Open the chat panel
+    openAnnotationChat(annotationId);
 }
 
 function renderFloatingAnnotations() {
@@ -1568,6 +1607,7 @@ function openAnnotationChat(annotationId) {
 function closeChatPanel() {
     elements.chatPanel.classList.add('hidden');
     state.currentAnnotationId = null;
+    state.autoOpenedAnnotationId = null; // Clear auto-opened tracking
     
     // Remove active state from cards
     document.querySelectorAll('.annotation-card').forEach(card => {
