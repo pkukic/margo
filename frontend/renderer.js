@@ -1128,31 +1128,35 @@ function updateVisibleAnnotations() {
     const topAnnotations = annotationScores.slice(0, state.maxVisibleAnnotations);
     const newVisibleIds = topAnnotations.map(a => a.annotation.id);
     
-    // Auto-open/switch chat for annotation closest to center (within 20% of viewport height)
+    // Auto-focus annotation closest to center
     if (topAnnotations.length > 0) {
         const closest = topAnnotations[0];
-        const threshold = viewportHeight * 0.20;
+        const threshold = viewportHeight * 0.25;
         
-        if (closest.distanceFromCenter < threshold) {
-            // If chat is hidden, auto-open
-            if (elements.chatPanel.classList.contains('hidden')) {
+        // If sidebar is open, always switch focus to the closest annotation
+        if (state.isSidebarOpen && closest.distanceFromCenter < threshold) {
+            if (state.currentAnnotationId !== closest.annotation.id) {
+                // Switch to the closer annotation
+                openAnnotationChat(closest.annotation.id);
+            }
+        }
+        // If sidebar is closed and chat panel is hidden, auto-open
+        else if (!state.isSidebarOpen && elements.chatPanel.classList.contains('hidden')) {
+            if (closest.distanceFromCenter < threshold * 0.8) {
                 autoOpenAnnotationChat(closest.annotation.id);
             }
-            // If chat is open but showing a different annotation that was auto-opened,
-            // switch to the closer one
-            else if (state.autoOpenedAnnotationId && 
-                     state.currentAnnotationId !== closest.annotation.id) {
-                // Check if the current annotation is further from center than the new one
-                const currentScore = annotationScores.find(a => a.annotation.id === state.currentAnnotationId);
-                if (!currentScore || currentScore.distanceFromCenter > closest.distanceFromCenter) {
-                    autoOpenAnnotationChat(closest.annotation.id);
-                }
+        }
+        // If chat panel is open and was auto-opened, switch to closer annotation
+        else if (!state.isSidebarOpen && state.autoOpenedAnnotationId && 
+                 state.currentAnnotationId !== closest.annotation.id) {
+            if (closest.distanceFromCenter < threshold) {
+                autoOpenAnnotationChat(closest.annotation.id);
             }
         }
     }
     
-    // Auto-close chat if current annotation scrolled far away from center
-    if (state.currentAnnotationId && state.autoOpenedAnnotationId === state.currentAnnotationId) {
+    // Auto-close chat if current annotation scrolled far away from center (only for auto-opened)
+    if (state.autoOpenedAnnotationId && state.currentAnnotationId === state.autoOpenedAnnotationId) {
         const currentInView = annotationScores.find(a => a.annotation.id === state.currentAnnotationId);
         const closeThreshold = viewportHeight * 0.5; // Close when 50% away from center
         
