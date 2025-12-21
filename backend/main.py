@@ -134,7 +134,7 @@ async def set_model(request: SetModelRequest):
 
 
 @app.post("/ask")
-async def ask_question(request: AskQuestionRequest):
+async def ask_question(request: AskRequest):
     """Ask a question about a PDF section (screenshot)."""
     if not ai_service or not ai_service.is_configured():
         raise HTTPException(status_code=503, detail="AI service not configured. Please set API keys.")
