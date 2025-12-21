@@ -16,7 +16,8 @@ const state = {
     pdfPath: null,
     currentPage: 1,
     totalPages: 0,
-    scale: 1.5,
+    renderScale: 2.0,  // Fixed high-res render scale for quality
+    zoomLevel: 1.0,    // Visual zoom level (CSS transform)
     
     // Screenshot mode
     isScreenshotMode: false,
@@ -53,6 +54,7 @@ const elements = {
     btnZoomIn: document.getElementById('btn-zoom-in'),
     btnZoomOut: document.getElementById('btn-zoom-out'),
     btnFit: document.getElementById('btn-fit'),
+    btnResetZoom: document.getElementById('btn-reset-zoom'),
     zoomLevel: document.getElementById('zoom-level'),
     btnScreenshot: document.getElementById('btn-screenshot'),
     btnHighlight: document.getElementById('btn-highlight'),
@@ -345,7 +347,7 @@ async function renderAllPages() {
     
     for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
         const page = await state.pdfDoc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: state.scale });
+        const viewport = page.getViewport({ scale: state.renderScale });
         
         // Create wrapper div for this page
         const pageWrapper = document.createElement('div');
@@ -397,6 +399,9 @@ async function renderAllPages() {
         renderTextLayer(textLayer, textContent, viewport);
     }
     
+    // Apply initial zoom
+    applyZoom();
+    
     // Update page info
     updatePageInfo(1);
 }
@@ -425,6 +430,46 @@ function renderTextLayer(container, textContent, viewport) {
     }
 }
 
+function applyZoom() {
+    if (!elements.pagesContainer) return;
+    
+    elements.pagesContainer.style.transform = `scale(${state.zoomLevel})`;
+    elements.pagesContainer.style.transformOrigin = 'top center';
+    elements.zoomLevel.textContent = `${Math.round(state.zoomLevel * 100)}%`;
+}
+
+function applyZoomAtPoint(oldZoom, newZoom, clientX, clientY) {
+    if (!elements.pagesContainer) return;
+    
+    const container = elements.pdfContainer;
+    const containerRect = container.getBoundingClientRect();
+    
+    // Get the mouse position relative to the container
+    const mouseX = clientX - containerRect.left;
+    const mouseY = clientY - containerRect.top;
+    
+    // Calculate the scroll position before zoom
+    const scrollLeft = container.scrollLeft;
+    const scrollTop = container.scrollTop;
+    
+    // Calculate the point in the content that's under the mouse
+    const contentX = (scrollLeft + mouseX) / oldZoom;
+    const contentY = (scrollTop + mouseY) / oldZoom;
+    
+    // Apply the new zoom
+    state.zoomLevel = newZoom;
+    elements.pagesContainer.style.transform = `scale(${state.zoomLevel})`;
+    elements.pagesContainer.style.transformOrigin = 'top center';
+    elements.zoomLevel.textContent = `${Math.round(state.zoomLevel * 100)}%`;
+    
+    // Calculate new scroll position to keep the same content point under the mouse
+    const newScrollLeft = contentX * newZoom - mouseX;
+    const newScrollTop = contentY * newZoom - mouseY;
+    
+    container.scrollLeft = newScrollLeft;
+    container.scrollTop = newScrollTop;
+}
+
 async function renderPage(pageNum) {
     // For re-rendering a single page (e.g., after zoom change)
     if (!state.pdfDoc) return;
@@ -437,7 +482,7 @@ async function renderPage(pageNum) {
     
     const dpr = window.devicePixelRatio || 1;
     const page = await state.pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: state.scale });
+    const viewport = page.getViewport({ scale: state.renderScale });
     
     // Set canvas dimensions for high DPI
     canvas.width = Math.floor(viewport.width * dpr);
@@ -494,7 +539,7 @@ function setupScrollListener() {
 
 function updatePageInfo(pageNum) {
     elements.pageInfo.textContent = `Page ${pageNum} / ${state.totalPages}`;
-    elements.zoomLevel.textContent = `${Math.round(state.scale * 100)}%`;
+    elements.zoomLevel.textContent = `${Math.round(state.zoomLevel * 100)}%`;
     
     // Update button states
     elements.btnPrev.disabled = pageNum <= 1;
@@ -680,12 +725,13 @@ async function handleSelectionEnd(e) {
     
     // Create new annotation
     const annotationId = generateId();
+    const effectiveScale = state.renderScale * state.zoomLevel;
     const boundingBox = {
-        x: left / state.scale,
-        y: top / state.scale,
-        width: width / state.scale,
-        height: height / state.scale,
-        scale: state.scale
+        x: left / effectiveScale,
+        y: top / effectiveScale,
+        width: width / effectiveScale,
+        height: height / effectiveScale,
+        scale: effectiveScale
     };
     
     state.annotations[annotationId] = {
@@ -1200,26 +1246,45 @@ function nextPage() {
 }
 
 function zoomIn() {
-    state.scale = Math.min(state.scale + 0.25, 4);
-    reRenderAllPages();
+    state.zoomLevel = Math.min(state.zoomLevel + 0.1, 3);
+    applyZoom();
 }
 
 function zoomOut() {
-    state.scale = Math.max(state.scale - 0.25, 0.5);
-    reRenderAllPages();
+    state.zoomLevel = Math.max(state.zoomLevel - 0.1, 0.25);
+    applyZoom();
 }
 
 function fitToWidth() {
     if (!state.pdfDoc) return;
     
-    // Calculate scale to fit container width
+    // Calculate zoom to fit container width
     const containerWidth = elements.pdfContainer.clientWidth - 40; // padding
     
-    state.pdfDoc.getPage(state.currentPage).then(page => {
-        const viewport = page.getViewport({ scale: 1 });
-        state.scale = containerWidth / viewport.width;
-        reRenderAllPages();
+    state.pdfDoc.getPage(1).then(page => {
+        const viewport = page.getViewport({ scale: state.renderScale });
+        state.zoomLevel = containerWidth / viewport.width;
+        applyZoom();
     });
+}
+
+function resetZoom() {
+    state.zoomLevel = 1.0;
+    applyZoom();
+}
+
+function handleWheelZoom(e) {
+    // Only zoom if Ctrl is held
+    if (!e.ctrlKey) return;
+    
+    e.preventDefault();
+    
+    const oldZoom = state.zoomLevel;
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const newZoom = Math.max(0.25, Math.min(3, state.zoomLevel + delta));
+    
+    // Zoom towards the mouse cursor position
+    applyZoomAtPoint(oldZoom, newZoom, e.clientX, e.clientY);
 }
 
 // ============================================
@@ -1246,6 +1311,10 @@ function initEventListeners() {
     elements.btnZoomIn.addEventListener('click', zoomIn);
     elements.btnZoomOut.addEventListener('click', zoomOut);
     elements.btnFit.addEventListener('click', fitToWidth);
+    elements.btnResetZoom.addEventListener('click', resetZoom);
+    
+    // Mouse wheel zoom (Ctrl + scroll)
+    elements.pdfContainer.addEventListener('wheel', handleWheelZoom, { passive: false });
     
     // Model selection
     elements.providerSelect.addEventListener('change', () => {
