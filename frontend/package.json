@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "description": "AI-powered PDF reader and annotation tool",
   "main": "main.js",
+  "homepage": "https://github.com/pkukic/margo",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build:linux": "electron-builder --linux",
     "pack": "electron-builder --dir"
   },
   "keywords": [
@@ -15,7 +17,10 @@
     "research",
     "papers"
   ],
-  "author": "",
+  "author": {
+    "name": "Patrik Kukic",
+    "email": "patrik@kukic.dev"
+  },
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.1.0",
@@ -27,15 +32,34 @@
     "pdfjs-dist": "^4.0.379"
   },
   "build": {
-    "appId": "com.margo.app",
+    "appId": "com.margo.pdfviewer",
     "productName": "Margo",
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "category": "Office"
+      "category": "Office;Viewer;",
+      "mimeTypes": [
+        "application/pdf"
+      ],
+      "icon": "assets/icons",
+      "maintainer": "Patrik Kukic <patrik@kukic.dev>",
+      "desktop": {
+        "Name": "Margo",
+        "Comment": "AI-powered PDF reader and annotation tool",
+        "Keywords": "pdf;reader;annotation;ai;research;papers;",
+        "StartupWMClass": "margo"
+      }
     },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF Document",
+        "mimeType": "application/pdf",
+        "role": "Viewer"
+      }
+    ],
     "files": [
       "**/*",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",

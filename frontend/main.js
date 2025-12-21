@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 let mainWindow;
+let fileToOpen = null; // Store file path passed via command line or file association
 
 // Settings file path in user data directory
 const settingsPath = path.join(app.getPath('userData'), 'margo-settings.json');
@@ -29,6 +30,21 @@ function saveSettings(settings) {
     }
 }
 
+// Check command line arguments for a PDF file to open
+function getFileFromArgs(args) {
+    // Skip the first arg (electron executable) and second (script path in dev)
+    // In production, the first arg after the app is the file
+    for (const arg of args) {
+        if (arg.endsWith('.pdf') && fs.existsSync(arg)) {
+            return arg;
+        }
+    }
+    return null;
+}
+
+// Handle file open from command line (Linux "Open with...")
+fileToOpen = getFileFromArgs(process.argv);
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1920,
@@ -46,6 +62,14 @@ function createWindow() {
 
     mainWindow.loadFile('index.html');
 
+    // Once the window is ready, send the file to open if one was specified
+    mainWindow.webContents.on('did-finish-load', () => {
+        if (fileToOpen) {
+            mainWindow.webContents.send('open-file', fileToOpen);
+            fileToOpen = null;
+        }
+    });
+
     // Open DevTools in development
     if (process.env.NODE_ENV === 'development') {
         mainWindow.webContents.openDevTools();
@@ -53,6 +77,23 @@ function createWindow() {
 
     mainWindow.on('closed', () => {
         mainWindow = null;
+    });
+}
+
+// Handle second instance (when app is already running and user opens another file)
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+    app.quit();
+} else {
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+        // Someone tried to run a second instance, focus our window and open the file
+        const filePath = getFileFromArgs(commandLine);
+        if (filePath && mainWindow) {
+            mainWindow.webContents.send('open-file', filePath);
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+        }
     });
 }
 

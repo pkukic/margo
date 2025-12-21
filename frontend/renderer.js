@@ -1830,6 +1830,12 @@ async function init() {
     // Restore last opened PDF
     await restoreLastPDF(settings);
     
+    // Listen for files opened via command line / "Open with..."
+    window.electronAPI.onOpenFile((filePath) => {
+        console.log('Opening file from command line:', filePath);
+        loadPDF(filePath);
+    });
+    
     // Save view state periodically and before unload
     setInterval(saveViewState, 5000);
     window.addEventListener('beforeunload', saveViewState);

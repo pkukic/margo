@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e94560;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#c73e54;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#grad)"/>
+  <!-- PDF document shape -->
+  <rect x="140" y="100" width="200" height="280" rx="12" fill="#ffffff"/>
+  <!-- Document lines -->
+  <rect x="170" y="150" width="140" height="12" rx="6" fill="#e94560" opacity="0.3"/>
+  <rect x="170" y="180" width="120" height="12" rx="6" fill="#e94560" opacity="0.3"/>
+  <rect x="170" y="210" width="140" height="12" rx="6" fill="#e94560" opacity="0.3"/>
+  <rect x="170" y="240" width="100" height="12" rx="6" fill="#e94560" opacity="0.3"/>
+  <!-- AI sparkle -->
+  <circle cx="380" cy="380" r="80" fill="#16213e"/>
+  <path d="M380 320 L390 360 L430 370 L390 380 L380 420 L370 380 L330 370 L370 360 Z" fill="#e94560"/>
+</svg>

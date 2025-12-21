@@ -15,5 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateSetting: (key, value) => ipcRenderer.invoke('update-setting', key, value),
     
     // External URL
-    openExternal: (url) => ipcRenderer.invoke('open-external', url)
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+    
+    // File open event (from command line / file association)
+    onOpenFile: (callback) => ipcRenderer.on('open-file', (event, filePath) => callback(filePath))
 });
