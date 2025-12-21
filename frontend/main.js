@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -154,4 +154,15 @@ ipcMain.handle('update-setting', async (event, key, value) => {
     const settings = loadSettings();
     settings[key] = value;
     return saveSettings(settings);
+});
+
+// Open external URL in default browser
+ipcMain.handle('open-external', async (event, url) => {
+    try {
+        await shell.openExternal(url);
+        return true;
+    } catch (err) {
+        console.error('Error opening external URL:', err);
+        return false;
+    }
 });

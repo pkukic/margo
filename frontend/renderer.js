@@ -424,6 +424,12 @@ async function renderAllPages() {
         textLayer.dataset.pageNum = pageNum;
         pageWrapper.appendChild(textLayer);
         
+        // Create link layer for clickable links
+        const linkLayer = document.createElement('div');
+        linkLayer.className = 'link-layer';
+        linkLayer.dataset.pageNum = pageNum;
+        pageWrapper.appendChild(linkLayer);
+        
         // Add page number label
         const pageLabel = document.createElement('div');
         pageLabel.className = 'page-number-label';
@@ -441,6 +447,10 @@ async function renderAllPages() {
         // Render text layer
         const textContent = await page.getTextContent();
         renderTextLayer(textLayer, textContent, viewport);
+        
+        // Render link layer
+        const annotations = await page.getAnnotations();
+        renderLinkLayer(linkLayer, annotations, viewport, pageNum);
     }
     
     // Apply initial zoom
@@ -471,6 +481,160 @@ function renderTextLayer(container, textContent, viewport) {
         div.style.fontFamily = item.fontName || 'sans-serif';
         
         container.appendChild(div);
+    }
+}
+
+function renderLinkLayer(container, annotations, viewport, pageNum) {
+    container.innerHTML = '';
+    
+    for (const annotation of annotations) {
+        // Only process link annotations
+        if (annotation.subtype !== 'Link') continue;
+        
+        // Get the rectangle coordinates (in PDF coordinates)
+        const rect = annotation.rect;
+        if (!rect || rect.length !== 4) continue;
+        
+        // Transform PDF coordinates to viewport coordinates
+        // PDF coordinates have origin at bottom-left, viewport at top-left
+        const [x1, y1, x2, y2] = rect;
+        
+        // Convert using viewport transform
+        const viewRect = viewport.convertToViewportRectangle(rect);
+        
+        // viewRect is [x1, y1, x2, y2] in viewport coordinates
+        const left = Math.min(viewRect[0], viewRect[2]);
+        const top = Math.min(viewRect[1], viewRect[3]);
+        const width = Math.abs(viewRect[2] - viewRect[0]);
+        const height = Math.abs(viewRect[3] - viewRect[1]);
+        
+        // Create link element
+        const link = document.createElement('a');
+        link.className = 'pdf-link';
+        link.style.left = `${left}px`;
+        link.style.top = `${top}px`;
+        link.style.width = `${width}px`;
+        link.style.height = `${height}px`;
+        
+        // Determine link type and set up click handler
+        if (annotation.url) {
+            // External URL link
+            link.href = annotation.url;
+            link.title = `Ctrl+Click to open: ${annotation.url}`;
+            link.dataset.linkType = 'external';
+            link.addEventListener('click', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.electronAPI.openExternal(annotation.url);
+                } else {
+                    e.preventDefault();
+                }
+            });
+        } else if (annotation.dest) {
+            // Internal destination link (named destination)
+            link.href = '#';
+            link.title = 'Click to jump to destination';
+            link.dataset.linkType = 'internal';
+            link.dataset.dest = typeof annotation.dest === 'string' 
+                ? annotation.dest 
+                : JSON.stringify(annotation.dest);
+            link.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await navigateToDestination(annotation.dest);
+            });
+        } else if (annotation.action && annotation.action.dest) {
+            // GoTo action with destination
+            link.href = '#';
+            link.title = 'Click to jump to destination';
+            link.dataset.linkType = 'internal';
+            link.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await navigateToDestination(annotation.action.dest);
+            });
+        } else if (annotation.action && annotation.action.url) {
+            // URI action
+            link.href = annotation.action.url;
+            link.title = `Ctrl+Click to open: ${annotation.action.url}`;
+            link.dataset.linkType = 'external';
+            link.addEventListener('click', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.electronAPI.openExternal(annotation.action.url);
+                } else {
+                    e.preventDefault();
+                }
+            });
+        } else {
+            // Unknown link type, skip
+            continue;
+        }
+        
+        container.appendChild(link);
+    }
+}
+
+async function navigateToDestination(dest) {
+    if (!state.pdfDoc) return;
+    
+    try {
+        let pageNum = 1;
+        let destArray = dest;
+        
+        // If dest is a string (named destination), resolve it
+        if (typeof dest === 'string') {
+            destArray = await state.pdfDoc.getDestination(dest);
+        }
+        
+        if (!destArray) return;
+        
+        // Get the page reference from the destination
+        const pageRef = destArray[0];
+        
+        // Resolve the page index from the reference
+        const pageIndex = await state.pdfDoc.getPageIndex(pageRef);
+        pageNum = pageIndex + 1; // Convert to 1-based page number
+        
+        // Find the page wrapper and scroll to it
+        const pageWrapper = elements.pagesContainer.querySelector(
+            `.pdf-page-wrapper[data-page-num="${pageNum}"]`
+        );
+        
+        if (pageWrapper) {
+            // Get the destination type and coordinates
+            const destType = destArray[1].name;
+            let scrollTop = pageWrapper.offsetTop * state.zoomLevel;
+            
+            // Handle different destination types
+            if (destType === 'XYZ' && destArray[3] !== null) {
+                // XYZ destination: [page, /XYZ, left, top, zoom]
+                // destArray[3] is the top coordinate in PDF space
+                const page = await state.pdfDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: state.renderScale });
+                const pdfTop = destArray[3];
+                // Convert from PDF coordinates (bottom-left origin) to viewport coordinates
+                const viewportTop = viewport.height - (pdfTop * state.renderScale);
+                scrollTop = (pageWrapper.offsetTop + viewportTop) * state.zoomLevel;
+            } else if (destType === 'FitH' && destArray[2] !== null) {
+                // FitH destination: [page, /FitH, top]
+                const page = await state.pdfDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: state.renderScale });
+                const pdfTop = destArray[2];
+                const viewportTop = viewport.height - (pdfTop * state.renderScale);
+                scrollTop = (pageWrapper.offsetTop + viewportTop) * state.zoomLevel;
+            }
+            
+            // Scroll to the destination
+            elements.pdfContainer.scrollTo({
+                top: scrollTop,
+                behavior: 'smooth'
+            });
+        }
+    } catch (error) {
+        console.error('Failed to navigate to destination:', error);
     }
 }
 
@@ -752,9 +916,9 @@ async function handleSelectionEnd(e) {
     if (!state.isSelecting) return;
     state.isSelecting = false;
     
-    // Calculate bounding box
-    const left = Math.min(state.selectionStart.x, state.selectionEnd.x);
-    const top = Math.min(state.selectionStart.y, state.selectionEnd.y);
+    // Calculate selection box in viewport/overlay coordinates
+    const viewportLeft = Math.min(state.selectionStart.x, state.selectionEnd.x);
+    const viewportTop = Math.min(state.selectionStart.y, state.selectionEnd.y);
     const width = Math.abs(state.selectionEnd.x - state.selectionStart.x);
     const height = Math.abs(state.selectionEnd.y - state.selectionStart.y);
     
@@ -764,23 +928,55 @@ async function handleSelectionEnd(e) {
         return;
     }
     
-    // Capture the selected area from the canvas
-    const imageData = captureCanvasRegion(left, top, width, height);
+    // Selection center point in viewport coordinates
+    const selectionCenterX = viewportLeft + width / 2;
+    const selectionCenterY = viewportTop + height / 2;
     
-    // Create new annotation
+    // Find the page wrapper that contains this selection by checking bounding rects
+    const pageWrappers = elements.pagesContainer.querySelectorAll('.pdf-page-wrapper');
+    let targetPage = null;
+    let pageNum = 1;
+    let pageRect = null;
+    
+    for (const wrapper of pageWrappers) {
+        const rect = wrapper.getBoundingClientRect();
+        
+        if (selectionCenterY >= rect.top && selectionCenterY < rect.bottom &&
+            selectionCenterX >= rect.left && selectionCenterX < rect.right) {
+            targetPage = wrapper;
+            pageNum = parseInt(wrapper.dataset.pageNum);
+            pageRect = rect;
+            break;
+        }
+    }
+    
+    if (!targetPage) {
+        elements.selectionBox.style.display = 'none';
+        return;
+    }
+    
+    // Calculate position relative to the page (in viewport coordinates, then divide by zoom)
+    const relativeLeft = (viewportLeft - pageRect.left) / state.zoomLevel;
+    const relativeTop = (viewportTop - pageRect.top) / state.zoomLevel;
+    const relativeWidth = width / state.zoomLevel;
+    const relativeHeight = height / state.zoomLevel;
+    
+    // Capture the selected area from the canvas
+    const containerRect = elements.pdfContainer.getBoundingClientRect();
+    const imageData = captureCanvasRegion(viewportLeft, viewportTop, width, height, containerRect);
+    
+    // Create new annotation with coordinates relative to the page at renderScale
     const annotationId = generateId();
-    const effectiveScale = state.renderScale * state.zoomLevel;
     const boundingBox = {
-        x: left / effectiveScale,
-        y: top / effectiveScale,
-        width: width / effectiveScale,
-        height: height / effectiveScale,
-        scale: effectiveScale
+        x: relativeLeft / state.renderScale,
+        y: relativeTop / state.renderScale,
+        width: relativeWidth / state.renderScale,
+        height: relativeHeight / state.renderScale
     };
     
     state.annotations[annotationId] = {
         id: annotationId,
-        page_number: state.currentPage,
+        page_number: pageNum,
         bounding_box: boundingBox,
         image_base64: imageData,
         messages: [],
@@ -795,28 +991,26 @@ async function handleSelectionEnd(e) {
     disableScreenshotMode();
 }
 
-function captureCanvasRegion(x, y, width, height) {
-    // Find which canvas is under the selection
+function captureCanvasRegion(viewportX, viewportY, width, height, containerRect) {
+    // viewportX, viewportY are in viewport/screen coordinates
     const dpr = window.devicePixelRatio || 1;
-    const containerRect = elements.pdfContainer.getBoundingClientRect();
-    const scrollTop = elements.pdfContainer.scrollTop;
     
-    // Adjust selection coordinates relative to the container
-    const absoluteX = x;
-    const absoluteY = y + scrollTop;
+    // Selection center point in viewport coordinates
+    const selectionCenterX = viewportX + width / 2;
+    const selectionCenterY = viewportY + height / 2;
     
-    // Find the canvas at this position
+    // Find the canvas at this position using bounding rects
     const pageWrappers = elements.pagesContainer.querySelectorAll('.pdf-page-wrapper');
     let targetCanvas = null;
-    let canvasOffsetY = 0;
+    let canvasRect = null;
     
     for (const wrapper of pageWrappers) {
-        const wrapperTop = wrapper.offsetTop;
-        const wrapperBottom = wrapperTop + wrapper.offsetHeight;
+        const rect = wrapper.getBoundingClientRect();
         
-        if (absoluteY >= wrapperTop && absoluteY < wrapperBottom) {
+        if (selectionCenterY >= rect.top && selectionCenterY < rect.bottom &&
+            selectionCenterX >= rect.left && selectionCenterX < rect.right) {
             targetCanvas = wrapper.querySelector('canvas');
-            canvasOffsetY = wrapperTop;
+            canvasRect = targetCanvas.getBoundingClientRect();
             break;
         }
     }
@@ -824,19 +1018,19 @@ function captureCanvasRegion(x, y, width, height) {
     if (!targetCanvas) {
         // Fallback to first canvas
         targetCanvas = elements.pagesContainer.querySelector('canvas');
-        canvasOffsetY = 0;
+        canvasRect = targetCanvas.getBoundingClientRect();
     }
     
-    // Get canvas position and calculate relative coordinates
-    const canvasRect = targetCanvas.getBoundingClientRect();
+    // Calculate position relative to the canvas in viewport coordinates
+    // Then convert to canvas pixel coordinates
+    const canvasRelativeX = (viewportX - canvasRect.left) / state.zoomLevel;
+    const canvasRelativeY = (viewportY - canvasRect.top) / state.zoomLevel;
     
-    // Calculate position relative to this canvas (accounting for DPI scaling)
-    const canvasX = (x - (canvasRect.left - containerRect.left)) * dpr;
-    const canvasY = (y - (canvasRect.top - containerRect.top)) * dpr;
-    
-    // Capture dimensions scaled by DPI
-    const captureWidth = width * dpr;
-    const captureHeight = height * dpr;
+    // Scale to actual canvas pixels (canvas is at renderScale resolution)
+    const canvasX = canvasRelativeX * dpr;
+    const canvasY = canvasRelativeY * dpr;
+    const captureWidth = (width / state.zoomLevel) * dpr;
+    const captureHeight = (height / state.zoomLevel) * dpr;
     
     // Create temporary canvas at display resolution (not scaled)
     const tempCanvas = document.createElement('canvas');
@@ -844,7 +1038,7 @@ function captureCanvasRegion(x, y, width, height) {
     tempCanvas.height = height;
     const tempCtx = tempCanvas.getContext('2d');
     
-    // Draw the region (source is at DPI scale, dest is at display scale)
+    // Draw the region
     tempCtx.drawImage(
         targetCanvas,
         canvasX, canvasY, captureWidth, captureHeight,
@@ -856,11 +1050,110 @@ function captureCanvasRegion(x, y, width, height) {
 }
 
 // ============================================
+// Annotation Overlays on PDF
+// ============================================
+
+function renderAnnotationOverlays() {
+    // Remove existing overlays
+    document.querySelectorAll('.annotation-overlay').forEach(el => el.remove());
+    
+    const annotations = Object.values(state.annotations);
+    
+    for (const annotation of annotations) {
+        renderAnnotationOverlay(annotation);
+    }
+}
+
+function renderAnnotationOverlay(annotation) {
+    const pageWrapper = elements.pagesContainer.querySelector(
+        `.pdf-page-wrapper[data-page-num="${annotation.page_number}"]`
+    );
+    if (!pageWrapper) return;
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'annotation-overlay';
+    overlay.dataset.annotationId = annotation.id;
+    
+    if (annotation.id === state.currentAnnotationId) {
+        overlay.classList.add('active');
+    }
+    
+    if (annotation.bounding_box) {
+        // Screenshot annotation - draw bounding box
+        overlay.classList.add('screenshot-annotation');
+        
+        const scale = state.renderScale;
+        const box = annotation.bounding_box;
+        
+        overlay.style.left = (box.x * scale) + 'px';
+        overlay.style.top = (box.y * scale) + 'px';
+        overlay.style.width = (box.width * scale) + 'px';
+        overlay.style.height = (box.height * scale) + 'px';
+    } else if (annotation.selected_text) {
+        // Text annotation - create a highlight marker
+        // For text annotations we'll show a small indicator at the page
+        overlay.classList.add('text-annotation');
+        
+        // Place at left side of page as a marker
+        overlay.style.left = '5px';
+        overlay.style.top = '50px';
+        overlay.style.width = '20px';
+        overlay.style.height = '20px';
+        overlay.style.borderRadius = '50%';
+        overlay.title = annotation.selected_text.substring(0, 100) + '...';
+    }
+    
+    // Click handler to open the annotation
+    overlay.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAnnotationChat(annotation.id);
+    });
+    
+    pageWrapper.appendChild(overlay);
+}
+
+function updateAnnotationOverlayStates() {
+    // Update active state on all overlays
+    document.querySelectorAll('.annotation-overlay').forEach(overlay => {
+        if (overlay.dataset.annotationId === state.currentAnnotationId) {
+            overlay.classList.add('active');
+        } else {
+            overlay.classList.remove('active');
+        }
+    });
+}
+
+function scrollToAnnotation(annotation) {
+    const pageWrapper = elements.pagesContainer.querySelector(
+        `.pdf-page-wrapper[data-page-num="${annotation.page_number}"]`
+    );
+    if (!pageWrapper) return;
+    
+    if (annotation.bounding_box) {
+        // Scroll to the bounding box
+        const box = annotation.bounding_box;
+        const scale = state.renderScale * state.zoomLevel;
+        const targetY = pageWrapper.offsetTop + (box.y * state.renderScale * state.zoomLevel);
+        
+        elements.pdfContainer.scrollTo({
+            top: targetY - 100, // Offset to show some context above
+            behavior: 'smooth'
+        });
+    } else {
+        // Scroll to the page
+        pageWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+// ============================================
 // Annotations List
 // ============================================
 
 function updateAnnotationsList() {
     const annotations = Object.values(state.annotations);
+    
+    // Also update overlays on PDF
+    renderAnnotationOverlays();
     
     if (annotations.length === 0) {
         elements.noAnnotations.classList.remove('hidden');
@@ -924,7 +1217,12 @@ function createAnnotationCard(annotation) {
         <p class="annotation-message-count">${messageCount} message${messageCount !== 1 ? 's' : ''}</p>
     `;
     
-    card.addEventListener('click', () => openAnnotationChat(annotation.id));
+    card.addEventListener('click', () => {
+        // Scroll to the annotation location in the PDF
+        scrollToAnnotation(annotation);
+        // Open the chat panel
+        openAnnotationChat(annotation.id);
+    });
     
     return card;
 }
@@ -950,6 +1248,9 @@ function openAnnotationChat(annotationId) {
         card.classList.toggle('active', card.dataset.id === annotationId);
     });
     
+    // Update active state on overlays
+    updateAnnotationOverlayStates();
+    
     // Update chat panel
     elements.chatTitle.textContent = `Page ${annotation.page_number} Annotation`;
     
@@ -972,12 +1273,6 @@ function openAnnotationChat(annotationId) {
     
     // Focus input
     elements.chatInput.focus();
-    
-    // Jump to page if different
-    if (annotation.page_number !== state.currentPage) {
-        state.currentPage = annotation.page_number;
-        renderPage(state.currentPage);
-    }
 }
 
 function closeChatPanel() {
@@ -988,6 +1283,9 @@ function closeChatPanel() {
     document.querySelectorAll('.annotation-card').forEach(card => {
         card.classList.remove('active');
     });
+    
+    // Remove active state from overlays
+    updateAnnotationOverlayStates();
 }
 
 function renderChatMessages(messages) {
@@ -1224,8 +1522,6 @@ window.deleteMessage = async function(messageId) {
     const annotation = state.annotations[state.currentAnnotationId];
     if (!annotation) return;
     
-    if (!confirm('Are you sure you want to delete this message?')) return;
-    
     try {
         await apiRequest('/delete-message', {
             pdf_path: state.pdfPath,
@@ -1244,8 +1540,6 @@ window.deleteMessage = async function(messageId) {
 
 async function deleteCurrentAnnotation() {
     if (!state.currentAnnotationId) return;
-    
-    if (!confirm('Are you sure you want to delete this annotation and all its messages?')) return;
     
     try {
         await apiRequest('/delete-annotation', {

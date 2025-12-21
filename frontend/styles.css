@@ -260,6 +260,44 @@ html, body {
     pointer-events: none;
 }
 
+/* Link layer for clickable links */
+.link-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.pdf-link {
+    position: absolute;
+    pointer-events: auto;
+    cursor: pointer;
+    border: 1.5px solid rgba(0, 120, 215, 0.6);
+    background: rgba(0, 120, 215, 0.08);
+    border-radius: 2px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    text-decoration: none;
+}
+
+.pdf-link:hover {
+    background: rgba(0, 120, 215, 0.2);
+    border-color: rgba(0, 120, 215, 0.9);
+}
+
+.pdf-link[data-link-type="external"] {
+    border-color: rgba(0, 180, 100, 0.6);
+    background: rgba(0, 180, 100, 0.08);
+}
+
+.pdf-link[data-link-type="external"]:hover {
+    background: rgba(0, 180, 100, 0.2);
+    border-color: rgba(0, 180, 100, 0.9);
+}
+
 .page-number-label {
     position: absolute;
     bottom: -24px;
@@ -270,6 +308,46 @@ html, body {
     background: var(--bg-secondary);
     padding: 2px 8px;
     border-radius: 4px;
+}
+
+/* Annotation Overlays */
+.annotation-overlay {
+    position: absolute;
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 10;
+    transition: all 0.15s ease;
+}
+
+.annotation-overlay.screenshot-annotation {
+    border: 2px solid var(--accent);
+    background: rgba(233, 69, 96, 0.1);
+    border-radius: 4px;
+}
+
+.annotation-overlay.screenshot-annotation:hover {
+    background: rgba(233, 69, 96, 0.25);
+    border-color: var(--accent-light);
+}
+
+.annotation-overlay.screenshot-annotation.active {
+    background: rgba(233, 69, 96, 0.3);
+    border-width: 3px;
+    box-shadow: 0 0 8px rgba(233, 69, 96, 0.5);
+}
+
+.annotation-overlay.text-annotation {
+    background: rgba(255, 215, 0, 0.3);
+    border-radius: 2px;
+}
+
+.annotation-overlay.text-annotation:hover {
+    background: rgba(255, 215, 0, 0.5);
+}
+
+.annotation-overlay.text-annotation.active {
+    background: rgba(255, 215, 0, 0.5);
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.8);
 }
 
 #welcome-message {
