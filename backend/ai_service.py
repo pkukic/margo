@@ -12,18 +12,10 @@ from google.genai import types
 class AIService:
     """Service for interacting with Google Gemini."""
     
-    # Available Gemini models
-    GEMINI_MODELS = [
-        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "description": "Best price-performance, large context"},
-        {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "description": "Advanced reasoning and thinking"},
-        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "description": "Second gen workhorse model"},
-        {"id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash-Lite", "description": "Fastest, most cost-efficient"},
-        {"id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash-Lite", "description": "Fast and lightweight"},
-    ]
-    
     def __init__(self):
         self.gemini_client = None
         self.current_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self._cached_models = None
         
         if os.getenv("GEMINI_API_KEY"):
             self.gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -40,6 +32,35 @@ When analyzing content from papers:
 
 The user will share excerpts from academic papers (as text or images) and ask questions. Help them understand the material deeply."""
 
+    def _fetch_available_models(self) -> List[Dict]:
+        """Fetch available models from Gemini API."""
+        if not self.gemini_client:
+            return []
+        
+        if self._cached_models is not None:
+            return self._cached_models
+        
+        models = []
+        try:
+            for model in self.gemini_client.models.list():
+                # Filter for models that can generate content
+                if "generateContent" in model.supported_actions:
+                    models.append({
+                        "id": model.name,
+                        "name": model.display_name,
+                        "description": f"Max {model.input_token_limit:,} input tokens"
+                    })
+            
+            # Sort by name for consistent ordering
+            models.sort(key=lambda m: m["name"])
+            self._cached_models = models
+        except Exception as e:
+            print(f"Error fetching models: {e}")
+            # Fallback to a known model
+            models = [{"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "description": "Default model"}]
+        
+        return models
+
     def is_configured(self) -> bool:
         """Check if Gemini is configured."""
         return self.gemini_client is not None
@@ -52,10 +73,14 @@ The user will share excerpts from academic papers (as text or images) and ask qu
             providers.append({
                 "id": "gemini",
                 "name": "Google Gemini",
-                "models": self.GEMINI_MODELS
+                "models": self._fetch_available_models()
             })
         
         return providers
+    
+    def refresh_models(self):
+        """Clear the cached models to force a refresh."""
+        self._cached_models = None
     
     def set_model(self, provider: str, model_id: str):
         """Set the current model."""
