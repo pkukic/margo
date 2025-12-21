@@ -24,6 +24,9 @@ const state = {
     selectionEnd: null,
     isSelecting: false,
     
+    // Highlight/text selection mode
+    isHighlightMode: false,
+    
     // Annotations and chat
     annotations: {},
     currentAnnotationId: null,
@@ -52,6 +55,7 @@ const elements = {
     btnFit: document.getElementById('btn-fit'),
     zoomLevel: document.getElementById('zoom-level'),
     btnScreenshot: document.getElementById('btn-screenshot'),
+    btnHighlight: document.getElementById('btn-highlight'),
     connectionStatus: document.getElementById('connection-status'),
     providerSelect: document.getElementById('provider-select'),
     modelSelect: document.getElementById('model-select'),
@@ -347,6 +351,8 @@ async function renderAllPages() {
         const pageWrapper = document.createElement('div');
         pageWrapper.className = 'pdf-page-wrapper';
         pageWrapper.dataset.pageNum = pageNum;
+        pageWrapper.style.width = Math.floor(viewport.width) + 'px';
+        pageWrapper.style.height = Math.floor(viewport.height) + 'px';
         
         // Create canvas
         const canvas = document.createElement('canvas');
@@ -366,6 +372,12 @@ async function renderAllPages() {
         
         pageWrapper.appendChild(canvas);
         
+        // Create text layer for selectable text
+        const textLayer = document.createElement('div');
+        textLayer.className = 'text-layer';
+        textLayer.dataset.pageNum = pageNum;
+        pageWrapper.appendChild(textLayer);
+        
         // Add page number label
         const pageLabel = document.createElement('div');
         pageLabel.className = 'page-number-label';
@@ -374,15 +386,43 @@ async function renderAllPages() {
         
         elements.pagesContainer.appendChild(pageWrapper);
         
-        // Render page
+        // Render page canvas
         await page.render({
             canvasContext: context,
             viewport: viewport
         }).promise;
+        
+        // Render text layer
+        const textContent = await page.getTextContent();
+        renderTextLayer(textLayer, textContent, viewport);
     }
     
     // Update page info
     updatePageInfo(1);
+}
+
+function renderTextLayer(container, textContent, viewport) {
+    container.innerHTML = '';
+    
+    for (const item of textContent.items) {
+        const div = document.createElement('span');
+        div.textContent = item.str;
+        
+        // Get the transform for positioning
+        const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+        
+        // Calculate position and size
+        const fontSize = Math.sqrt(tx[0] * tx[0] + tx[1] * tx[1]);
+        const left = tx[4];
+        const top = tx[5] - fontSize;
+        
+        div.style.left = `${left}px`;
+        div.style.top = `${top}px`;
+        div.style.fontSize = `${fontSize}px`;
+        div.style.fontFamily = item.fontName || 'sans-serif';
+        
+        container.appendChild(div);
+    }
 }
 
 async function renderPage(pageNum) {
@@ -513,6 +553,75 @@ function disableScreenshotMode() {
     state.selectionStart = null;
     state.selectionEnd = null;
 }
+
+// ============================================
+// Highlight/Text Selection Mode
+// ============================================
+
+function enableHighlightMode() {
+    state.isHighlightMode = true;
+    elements.btnHighlight.classList.add('active');
+    // Add highlight-mode class to all text layers
+    const textLayers = document.querySelectorAll('.text-layer');
+    textLayers.forEach(layer => layer.classList.add('highlight-mode'));
+}
+
+function disableHighlightMode() {
+    state.isHighlightMode = false;
+    elements.btnHighlight.classList.remove('active');
+    // Remove highlight-mode class from all text layers
+    const textLayers = document.querySelectorAll('.text-layer');
+    textLayers.forEach(layer => layer.classList.remove('highlight-mode'));
+}
+
+function getSelectedText() {
+    const selection = window.getSelection();
+    return selection ? selection.toString().trim() : '';
+}
+
+function createAnnotationFromSelection() {
+    const selectedText = getSelectedText();
+    if (!selectedText) return;
+    
+    // Find which page the selection is on
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    
+    const range = selection.getRangeAt(0);
+    const textLayer = range.startContainer.parentElement?.closest('.text-layer');
+    const pageNum = textLayer ? parseInt(textLayer.dataset.pageNum) : state.currentPage;
+    
+    // Create annotation
+    const annotationId = generateId();
+    state.annotations[annotationId] = {
+        id: annotationId,
+        page_number: pageNum,
+        selected_text: selectedText,
+        image_base64: null,
+        messages: [],
+        created_at: new Date().toISOString()
+    };
+    
+    // Clear selection
+    selection.removeAllRanges();
+    
+    // Update UI and open chat
+    updateAnnotationsList();
+    openAnnotationChat(annotationId);
+    
+    // Disable highlight mode
+    disableHighlightMode();
+}
+
+// Listen for text selection completion in highlight mode
+document.addEventListener('mouseup', () => {
+    if (state.isHighlightMode) {
+        const selectedText = getSelectedText();
+        if (selectedText) {
+            createAnnotationFromSelection();
+        }
+    }
+});
 
 function handleSelectionStart(e) {
     if (!state.isScreenshotMode) return;
@@ -1161,7 +1270,18 @@ function initEventListeners() {
         if (state.isScreenshotMode) {
             disableScreenshotMode();
         } else {
+            disableHighlightMode();
             enableScreenshotMode();
+        }
+    });
+    
+    // Highlight mode
+    elements.btnHighlight.addEventListener('click', () => {
+        if (state.isHighlightMode) {
+            disableHighlightMode();
+        } else {
+            disableScreenshotMode();
+            enableHighlightMode();
         }
     });
     
@@ -1195,12 +1315,27 @@ function initEventListeners() {
                 }
                 break;
             case 's':
-                if (!e.ctrlKey) {
+                if (e.ctrlKey) {
+                    e.preventDefault();
                     if (state.pdfDoc) {
                         if (state.isScreenshotMode) {
                             disableScreenshotMode();
                         } else {
+                            disableHighlightMode();
                             enableScreenshotMode();
+                        }
+                    }
+                }
+                break;
+            case 'h':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    if (state.pdfDoc) {
+                        if (state.isHighlightMode) {
+                            disableHighlightMode();
+                        } else {
+                            disableScreenshotMode();
+                            enableHighlightMode();
                         }
                     }
                 }

@@ -221,6 +221,45 @@ html, body {
     display: block;
 }
 
+/* Text layer for selectable text */
+.text-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    opacity: 0.2;
+    line-height: 1.0;
+    pointer-events: none;
+}
+
+.text-layer.highlight-mode {
+    pointer-events: auto;
+    opacity: 0.2;
+}
+
+.text-layer > span {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    transform-origin: 0% 0%;
+    cursor: text;
+}
+
+.text-layer ::selection {
+    background: rgba(0, 120, 215, 0.4);
+}
+
+.text-layer.highlight-mode::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 3px solid var(--accent);
+    border-radius: 4px;
+    pointer-events: none;
+}
+
 .page-number-label {
     position: absolute;
     bottom: -24px;
