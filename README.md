@@ -71,19 +71,20 @@ npm install
 ### 5. Run the app
 
 ```bash
-cd frontend
-npm start
-```
+# Option 1: Run everything together
+./run.sh
 
-The app will automatically start the Python backend.
+# Option 2: Run backend and frontend separately (for development)
+./run-backend.sh   # In one terminal
+./run-frontend.sh  # In another terminal
+```
 
 ## Building for Linux
 
 ### Build `.deb` and AppImage packages
 
 ```bash
-cd frontend
-npm run build:linux
+./build-linux.sh
 ```
 
 The packages will be in `frontend/dist/`:
