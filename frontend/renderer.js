@@ -1155,14 +1155,12 @@ function updateVisibleAnnotations() {
         }
     }
     
-    // Auto-close chat if current annotation scrolled far away from center (only for auto-opened)
-    if (state.autoOpenedAnnotationId && state.currentAnnotationId === state.autoOpenedAnnotationId) {
+    // Auto-close chat if current annotation is no longer in viewport
+    // This applies to both auto-opened and manually opened annotations
+    if (state.currentAnnotationId) {
         const currentInView = annotationScores.find(a => a.annotation.id === state.currentAnnotationId);
-        const closeThreshold = viewportHeight * 0.5; // Close when 50% away from center
-        
-        if (!currentInView || currentInView.distanceFromCenter > closeThreshold) {
+        if (!currentInView) {
             closeChatPanel();
-            state.autoOpenedAnnotationId = null;
         }
     }
     
@@ -2006,16 +2004,21 @@ function initEventListeners() {
     
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        // Ignore if typing in input
+        // For Ctrl+A, always handle it (close annotation and toggle sidebar)
+        if (e.ctrlKey && e.key === 'a') {
+            e.preventDefault();
+            // If chat panel is open, close it first
+            if (!elements.chatPanel.classList.contains('hidden')) {
+                closeChatPanel();
+            }
+            toggleSidebar();
+            return;
+        }
+        
+        // Ignore other shortcuts if typing in input
         if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
         
         switch (e.key) {
-            case 'a':
-                if (e.ctrlKey) {
-                    e.preventDefault();
-                    toggleSidebar();
-                }
-                break;
             case 'o':
                 if (e.ctrlKey) {
                     e.preventDefault();
