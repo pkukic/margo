@@ -4,7 +4,7 @@
   <img src="frontend/assets/icons/512x512.png" alt="Margo Logo" width="128">
 </p>
 
-**Margo** is PDF reader for annotating and discussing papers, presentations, and other stuff you might use as a student. Screenshot sections and ask questions about them, with full LaTeX/Markdown rendering support.
+**Margo** is PDF reader for annotating and discussing papers, presentations, and other stuff you might use as a student. Screenshot sections, ask questions about them, and get answers from [Gemini](https://gemini.google.com/app), with full LaTeX/Markdown rendering support.
 
 The name has a dual meaning: *margo* is Latin for ["margin"](https://www.latin-is-simple.com/en/vocabulary/noun/11942/)—fitting for a PDF annotation tool. It's also a [popular brand of margarine in Croatia](https://www.zvijezda.hr/proizvodi/margo/), which inspired the buttery yellow logo.
 
