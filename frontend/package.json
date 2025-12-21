@@ -60,6 +60,13 @@
         "role": "Viewer"
       }
     ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["**/*.py", ".env", "requirements.txt", "pyproject.toml", "!.venv/**", "!**/__pycache__/**"]
+      }
+    ],
     "files": [
       "**/*",
       "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",

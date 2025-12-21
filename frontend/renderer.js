@@ -1821,6 +1821,26 @@ async function restoreLastPDF(settings) {
 async function init() {
     initEventListeners();
     
+    // Get backend port from main process (dynamic port for each instance)
+    try {
+        const port = await window.electronAPI.getBackendPort();
+        if (port) {
+            state.backendUrl = `http://127.0.0.1:${port}`;
+            console.log('Using backend URL:', state.backendUrl);
+        }
+    } catch (e) {
+        console.log('Could not get backend port, using default');
+    }
+    
+    // Also listen for backend port updates
+    window.electronAPI.onBackendPort((port) => {
+        if (port) {
+            state.backendUrl = `http://127.0.0.1:${port}`;
+            console.log('Backend port updated:', port);
+            checkBackendConnection();
+        }
+    });
+    
     // Load saved settings first (sets state.currentModel before dropdown is populated)
     const settings = await loadSavedSettings();
     

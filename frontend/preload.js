@@ -17,6 +17,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // External URL
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
     
+    // Backend
+    getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
+    onBackendPort: (callback) => ipcRenderer.on('backend-port', (event, port) => callback(port)),
+    
     // File open event (from command line / file association)
     onOpenFile: (callback) => ipcRenderer.on('open-file', (event, filePath) => callback(filePath))
 });

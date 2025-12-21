@@ -49,6 +49,12 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for startup detection."""
+    return {"status": "ok"}
+
+
 # Request/Response Models
 class AskQuestionRequest(BaseModel):
     pdf_path: str
