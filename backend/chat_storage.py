@@ -1,13 +1,12 @@
 """
 Chat Storage - Handles persistence of annotations and chat history to .chat files
 """
-import os
 import json
 import uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 
 
 @dataclass

@@ -187,17 +187,7 @@ Title:"""
                 config=config
             )
             
-            # Debug: print response details
-            print(f"Title generation response object: {response}")
-            if response:
-                print(f"Response candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
-                if hasattr(response, 'candidates') and response.candidates:
-                    candidate = response.candidates[0]
-                    print(f"Finish reason: {candidate.finish_reason if hasattr(candidate, 'finish_reason') else 'N/A'}")
-                    if hasattr(candidate, 'safety_ratings'):
-                        print(f"Safety ratings: {candidate.safety_ratings}")
-            
-            # Check for valid response
+# Check for valid response
             if response and response.text:
                 title = response.text.strip().strip('"').strip("'").strip()
                 # Remove common prefixes the model might add
@@ -209,11 +199,7 @@ Title:"""
                     title = title[:47] + "..."
                 return title if title else None
             else:
-                print(f"Title generation returned empty response")
-                print(f"response.text = {repr(response.text) if response else 'response is None'}")
                 return None
         except Exception as e:
-            print(f"Title generation API error: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Title generation error: {e}")
             return None

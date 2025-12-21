@@ -1,21 +1,17 @@
 """
 Margo Backend - AI-powered PDF annotation service
 """
-import os
-import json
 import base64
-from pathlib import Path
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from ai_service import AIService
-from chat_storage import ChatStorage, ChatFile, Annotation, Message
+from chat_storage import ChatStorage, Message
 
 load_dotenv()
 
@@ -47,12 +43,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for startup detection."""
-    return {"status": "ok"}
 
 
 # Request/Response Models

@@ -688,46 +688,6 @@ function applyZoomAtPoint(oldZoom, newZoom, clientX, clientY) {
     container.scrollTop = newScrollTop;
 }
 
-async function renderPage(pageNum) {
-    // For re-rendering a single page (e.g., after zoom change)
-    if (!state.pdfDoc) return;
-    
-    const pageWrapper = elements.pagesContainer.querySelector(`[data-page-num="${pageNum}"]`);
-    if (!pageWrapper) return;
-    
-    const canvas = pageWrapper.querySelector('canvas');
-    if (!canvas) return;
-    
-    const dpr = window.devicePixelRatio || 1;
-    const page = await state.pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: state.renderScale });
-    
-    // Set canvas dimensions for high DPI
-    canvas.width = Math.floor(viewport.width * dpr);
-    canvas.height = Math.floor(viewport.height * dpr);
-    
-    // Set CSS dimensions (actual display size)
-    canvas.style.width = Math.floor(viewport.width) + 'px';
-    canvas.style.height = Math.floor(viewport.height) + 'px';
-    
-    const context = canvas.getContext('2d');
-    context.scale(dpr, dpr);
-    
-    await page.render({
-        canvasContext: context,
-        viewport: viewport
-    }).promise;
-}
-
-async function reRenderAllPages() {
-    if (!state.pdfDoc) return;
-    
-    for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
-        await renderPage(pageNum);
-    }
-    updatePageInfo(state.currentPage);
-}
-
 function setupScrollListener() {
     elements.pdfContainer.addEventListener('scroll', () => {
         const scrollTop = elements.pdfContainer.scrollTop;
@@ -788,16 +748,6 @@ async function loadChatData() {
         }
     } catch (e) {
         console.log('No existing chat data or backend unavailable');
-    }
-}
-
-async function saveChatData() {
-    if (!state.pdfPath) return;
-    
-    try {
-        await apiRequest('/save-chat', { pdf_path: state.pdfPath });
-    } catch (e) {
-        console.error('Failed to save chat data:', e);
     }
 }
 
@@ -1368,12 +1318,6 @@ function updateAnnotationArrows() {
     }
 }
 
-function clearFloatingAnnotations() {
-    state.visibleAnnotationIds = [];
-    elements.floatingAnnotationsContainer.innerHTML = '';
-    elements.annotationArrows.innerHTML = '';
-}
-
 function scrollToAnnotation(annotation) {
     const pageWrapper = elements.pagesContainer.querySelector(
         `.pdf-page-wrapper[data-page-num="${annotation.page_number}"]`
@@ -1383,7 +1327,6 @@ function scrollToAnnotation(annotation) {
     if (annotation.bounding_box) {
         // Scroll to the bounding box
         const box = annotation.bounding_box;
-        const scale = state.renderScale * state.zoomLevel;
         const targetY = pageWrapper.offsetTop + (box.y * state.renderScale * state.zoomLevel);
         
         elements.pdfContainer.scrollTo({
