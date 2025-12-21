@@ -1,12 +1,12 @@
-# Margo - AI-Powered PDF Reader and Annotator
+# Margo - Answer questions in your PDFs
 
 <p align="center">
   <img src="frontend/assets/icons/512x512.png" alt="Margo Logo" width="128">
 </p>
 
-**Margo** is an AI-powered PDF reader for annotating and discussing academic papers. Screenshot sections and ask questions about them, with full LaTeX/Markdown rendering support.
+**Margo** is PDF reader for annotating and discussing papers, presentations, and other stuff you might use as a student. Screenshot sections and ask questions about them, with full LaTeX/Markdown rendering support.
 
-The name has a dual meaning: *margo* is Latin for ["margin"](https://www.latin-is-simple.com/en/vocabulary/noun/11942/)—fitting for a PDF annotation tool. It's also a popular brand of margarine in Croatia, which inspired the buttery yellow logo.
+The name has a dual meaning: *margo* is Latin for ["margin"](https://www.latin-is-simple.com/en/vocabulary/noun/11942/)—fitting for a PDF annotation tool. It's also a [popular brand of margarine in Croatia](https://www.zvijezda.hr/proizvodi/margo/), which inspired the buttery yellow logo.
 
 ## Current Limitations
 
@@ -17,7 +17,6 @@ The name has a dual meaning: *margo* is Latin for ["margin"](https://www.latin-i
 
 - 📄 **PDF Viewing**: Full-featured PDF reader with zoom, page navigation, and clickable links
 - 🖼️ **Screenshot Selection**: Select any region of the PDF to ask questions about
-- 🤖 **AI Chat**: Ask questions about selected content with follow-up support
 - 📐 **LaTeX Support**: Full mathematical notation rendering in responses
 - 💾 **Auto-save**: All conversations saved to `.chat` files alongside PDFs
 - 🔄 **State Recovery**: Reopen any PDF and restore all annotations/chats
