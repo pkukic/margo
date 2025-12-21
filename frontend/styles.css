@@ -237,11 +237,6 @@ html, body {
     pointer-events: none;
 }
 
-.text-layer.highlight-mode {
-    pointer-events: auto;
-    opacity: 0.2;
-}
-
 .text-layer > span {
     color: transparent;
     position: absolute;
@@ -252,15 +247,6 @@ html, body {
 
 .text-layer ::selection {
     background: rgba(210, 140, 50, 0.5);
-}
-
-.text-layer.highlight-mode::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border: 3px solid #d28c32;
-    border-radius: 4px;
-    pointer-events: none;
 }
 
 /* Link layer for clickable links */

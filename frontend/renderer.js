@@ -25,9 +25,6 @@ const state = {
     selectionEnd: null,
     isSelecting: false,
     
-    // Highlight/text selection mode
-    isHighlightMode: false,
-    
     // Annotations and chat
     annotations: {},
     currentAnnotationId: null,
@@ -65,7 +62,6 @@ const elements = {
     btnResetZoom: document.getElementById('btn-reset-zoom'),
     zoomLevel: document.getElementById('zoom-level'),
     btnScreenshot: document.getElementById('btn-screenshot'),
-    btnHighlight: document.getElementById('btn-highlight'),
     connectionStatus: document.getElementById('connection-status'),
     providerSelect: document.getElementById('provider-select'),
     modelSelect: document.getElementById('model-select'),
@@ -824,75 +820,6 @@ function disableScreenshotMode() {
     state.selectionEnd = null;
 }
 
-// ============================================
-// Highlight/Text Selection Mode
-// ============================================
-
-function enableHighlightMode() {
-    state.isHighlightMode = true;
-    elements.btnHighlight.classList.add('active');
-    // Add highlight-mode class to all text layers
-    const textLayers = document.querySelectorAll('.text-layer');
-    textLayers.forEach(layer => layer.classList.add('highlight-mode'));
-}
-
-function disableHighlightMode() {
-    state.isHighlightMode = false;
-    elements.btnHighlight.classList.remove('active');
-    // Remove highlight-mode class from all text layers
-    const textLayers = document.querySelectorAll('.text-layer');
-    textLayers.forEach(layer => layer.classList.remove('highlight-mode'));
-}
-
-function getSelectedText() {
-    const selection = window.getSelection();
-    return selection ? selection.toString().trim() : '';
-}
-
-function createAnnotationFromSelection() {
-    const selectedText = getSelectedText();
-    if (!selectedText) return;
-    
-    // Find which page the selection is on
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return;
-    
-    const range = selection.getRangeAt(0);
-    const textLayer = range.startContainer.parentElement?.closest('.text-layer');
-    const pageNum = textLayer ? parseInt(textLayer.dataset.pageNum) : state.currentPage;
-    
-    // Create annotation
-    const annotationId = generateId();
-    state.annotations[annotationId] = {
-        id: annotationId,
-        page_number: pageNum,
-        selected_text: selectedText,
-        image_base64: null,
-        messages: [],
-        created_at: new Date().toISOString()
-    };
-    
-    // Clear selection
-    selection.removeAllRanges();
-    
-    // Update UI and open chat
-    updateAnnotationsList();
-    openAnnotationChat(annotationId);
-    
-    // Disable highlight mode
-    disableHighlightMode();
-}
-
-// Listen for text selection completion in highlight mode
-document.addEventListener('mouseup', () => {
-    if (state.isHighlightMode) {
-        const selectedText = getSelectedText();
-        if (selectedText) {
-            createAnnotationFromSelection();
-        }
-    }
-});
-
 function handleSelectionStart(e) {
     if (!state.isScreenshotMode) return;
     
@@ -1095,8 +1022,8 @@ function renderAnnotationOverlay(annotation) {
         overlay.classList.add('active');
     }
     
-    if (annotation.bounding_box) {
-        // Screenshot annotation - draw bounding box
+    // Screenshot annotation - has image and bounding box
+    if (annotation.image_base64 && annotation.bounding_box) {
         overlay.classList.add('screenshot-annotation');
         
         const scale = state.renderScale;
@@ -1106,18 +1033,27 @@ function renderAnnotationOverlay(annotation) {
         overlay.style.top = (box.y * scale) + 'px';
         overlay.style.width = (box.width * scale) + 'px';
         overlay.style.height = (box.height * scale) + 'px';
-    } else if (annotation.selected_text) {
-        // Text annotation - create a highlight marker
-        // For text annotations we'll show a small indicator at the page
+    }
+    // Text annotation with bounding box (new style)
+    else if (annotation.selected_text && annotation.bounding_box) {
         overlay.classList.add('text-annotation');
         
-        // Place at left side of page as a marker
-        overlay.style.left = '5px';
-        overlay.style.top = '50px';
-        overlay.style.width = '20px';
-        overlay.style.height = '20px';
-        overlay.style.borderRadius = '50%';
+        const scale = state.renderScale;
+        const box = annotation.bounding_box;
+        
+        overlay.style.left = (box.x * scale) + 'px';
+        overlay.style.top = (box.y * scale) + 'px';
+        overlay.style.width = (box.width * scale) + 'px';
+        overlay.style.height = (box.height * scale) + 'px';
         overlay.title = annotation.selected_text.substring(0, 100) + '...';
+    }
+    // Legacy text annotation without bounding box - skip overlay
+    else if (annotation.selected_text && !annotation.bounding_box) {
+        return;
+    }
+    // Unknown annotation type - skip
+    else {
+        return;
     }
     
     // Click handler to open the annotation
@@ -1192,15 +1128,26 @@ function updateVisibleAnnotations() {
     const topAnnotations = annotationScores.slice(0, state.maxVisibleAnnotations);
     const newVisibleIds = topAnnotations.map(a => a.annotation.id);
     
-    // Auto-open chat for annotation very close to center (within 20% of viewport height)
-    // Only if chat panel is currently hidden
-    if (elements.chatPanel.classList.contains('hidden') && topAnnotations.length > 0) {
+    // Auto-open/switch chat for annotation closest to center (within 20% of viewport height)
+    if (topAnnotations.length > 0) {
         const closest = topAnnotations[0];
         const threshold = viewportHeight * 0.20;
         
         if (closest.distanceFromCenter < threshold) {
-            // Auto-open this annotation's chat
-            autoOpenAnnotationChat(closest.annotation.id);
+            // If chat is hidden, auto-open
+            if (elements.chatPanel.classList.contains('hidden')) {
+                autoOpenAnnotationChat(closest.annotation.id);
+            }
+            // If chat is open but showing a different annotation that was auto-opened,
+            // switch to the closer one
+            else if (state.autoOpenedAnnotationId && 
+                     state.currentAnnotationId !== closest.annotation.id) {
+                // Check if the current annotation is further from center than the new one
+                const currentScore = annotationScores.find(a => a.annotation.id === state.currentAnnotationId);
+                if (!currentScore || currentScore.distanceFromCenter > closest.distanceFromCenter) {
+                    autoOpenAnnotationChat(closest.annotation.id);
+                }
+            }
         }
     }
     
@@ -2012,18 +1959,7 @@ function initEventListeners() {
         if (state.isScreenshotMode) {
             disableScreenshotMode();
         } else {
-            disableHighlightMode();
             enableScreenshotMode();
-        }
-    });
-    
-    // Highlight mode
-    elements.btnHighlight.addEventListener('click', () => {
-        if (state.isHighlightMode) {
-            disableHighlightMode();
-        } else {
-            disableScreenshotMode();
-            enableHighlightMode();
         }
     });
     
@@ -2072,21 +2008,7 @@ function initEventListeners() {
                         if (state.isScreenshotMode) {
                             disableScreenshotMode();
                         } else {
-                            disableHighlightMode();
                             enableScreenshotMode();
-                        }
-                    }
-                }
-                break;
-            case 'h':
-                if (e.ctrlKey) {
-                    e.preventDefault();
-                    if (state.pdfDoc) {
-                        if (state.isHighlightMode) {
-                            disableHighlightMode();
-                        } else {
-                            disableScreenshotMode();
-                            enableHighlightMode();
                         }
                     }
                 }

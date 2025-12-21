@@ -4,7 +4,7 @@
   <img src="frontend/assets/icon-256.png" alt="Margo Logo" width="128">
 </p>
 
-**Margo** is an AI-powered PDF reader for annotating and discussing academic papers. Screenshot or highlight sections and ask questions about them, with full LaTeX/Markdown rendering support.
+**Margo** is an AI-powered PDF reader for annotating and discussing academic papers. Screenshot sections and ask questions about them, with full LaTeX/Markdown rendering support.
 
 The name has a dual meaning: *margo* is Latin for ["margin"](https://www.latin-is-simple.com/en/vocabulary/noun/11942/)—fitting for a PDF annotation tool. It's also a popular brand of margarine in Croatia, which inspired the buttery yellow logo.
 
@@ -17,7 +17,6 @@ The name has a dual meaning: *margo* is Latin for ["margin"](https://www.latin-i
 
 - 📄 **PDF Viewing**: Full-featured PDF reader with zoom, page navigation, and clickable links
 - 🖼️ **Screenshot Selection**: Select any region of the PDF to ask questions about
-- ✨ **Text Highlighting**: Highlight text and get AI explanations
 - 🤖 **AI Chat**: Ask questions about selected content with follow-up support
 - 📐 **LaTeX Support**: Full mathematical notation rendering in responses
 - 💾 **Auto-save**: All conversations saved to `.chat` files alongside PDFs
@@ -108,14 +107,13 @@ After installation:
 
 1. **Open a PDF**: Click "Open PDF" or use Ctrl+O, or right-click a PDF file
 2. **Screenshot Mode**: Press `Ctrl+S` or click the screenshot button, then drag to select an area
-3. **Highlight Mode**: Press `Ctrl+H` to highlight text
-4. **Ask a Question**: Type your question in the chat panel and press Enter
-5. **Follow-up Questions**: Continue the conversation in the same chat thread
-6. **Edit/Delete**: Hover over messages to edit or delete them
+3. **Ask a Question**: Type your question in the chat panel and press Enter
+4. **Follow-up Questions**: Continue the conversation in the same chat thread
+5. **Edit/Delete**: Hover over messages to edit or delete them
 
 ## File Format
 
-Conversations and screenshots/text highlights mentioned in them are saved as `.chat` files (JSON format) alongside the PDF:
+Conversations and screenshots are saved as `.chat` files (JSON format) alongside the PDF:
 
 ```
 my-paper.pdf

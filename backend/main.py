@@ -56,15 +56,13 @@ async def health_check():
 
 
 # Request/Response Models
-class AskQuestionRequest(BaseModel):
+class AskRequest(BaseModel):
     pdf_path: str
     annotation_id: str
     question: str
     # For screenshot-based questions
     image_base64: Optional[str] = None
     bounding_box: Optional[dict] = None
-    # For text-based questions
-    selected_text: Optional[str] = None
     # Page info
     page_number: int
     # Previous messages in this annotation's chat
@@ -137,16 +135,13 @@ async def set_model(request: SetModelRequest):
 
 @app.post("/ask")
 async def ask_question(request: AskQuestionRequest):
-    """Ask a question about a PDF section (screenshot or text)."""
+    """Ask a question about a PDF section (screenshot)."""
     if not ai_service or not ai_service.is_configured():
         raise HTTPException(status_code=503, detail="AI service not configured. Please set API keys.")
     
     try:
         # Build context for the AI
         context_parts = []
-        
-        if request.selected_text:
-            context_parts.append(f"Selected text from the paper:\n\n{request.selected_text}")
         
         if request.image_base64:
             context_parts.append("An image of the selected section is attached.")
@@ -164,8 +159,7 @@ async def ask_question(request: AskQuestionRequest):
             pdf_path=request.pdf_path,
             annotation_id=request.annotation_id,
             page_number=request.page_number,
-            bounding_box=request.bounding_box,
-            selected_text=request.selected_text
+            bounding_box=request.bounding_box
         )
         
         # Add messages to the annotation
