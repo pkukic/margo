@@ -17,11 +17,6 @@ if ! command -v npm &> /dev/null; then
     exit 1
 fi
 
-if ! command -v convert &> /dev/null; then
-    echo "Warning: ImageMagick (convert) not found. Icon conversion may fail."
-    echo "Install with: sudo apt install imagemagick"
-fi
-
 # Navigate to frontend directory
 cd "$FRONTEND_DIR"
 
@@ -29,13 +24,6 @@ cd "$FRONTEND_DIR"
 if [ ! -d "node_modules" ]; then
     echo "Installing npm dependencies..."
     npm install
-fi
-
-# Convert SVG icon to PNG if ImageMagick is available
-if command -v convert &> /dev/null; then
-    echo "Converting icon to PNG..."
-    convert -background none -density 512 assets/icon.svg -resize 512x512 assets/icon.png
-    convert -background none -density 256 assets/icon.svg -resize 256x256 assets/icon-256.png
 fi
 
 # Build the application
