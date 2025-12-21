@@ -1,18 +1,21 @@
-/* CSS Variables */
+/* CSS Variables - Margo Buttery Yellow Theme */
 :root {
-    --bg-primary: #1a1a2e;
-    --bg-secondary: #16213e;
-    --bg-tertiary: #0f3460;
-    --text-primary: #eaeaea;
-    --text-secondary: #a0a0a0;
-    --text-muted: #6b6b6b;
-    --accent: #e94560;
-    --accent-hover: #ff6b6b;
-    --success: #4ade80;
-    --warning: #fbbf24;
-    --error: #ef4444;
-    --border: #2d2d44;
-    --shadow: rgba(0, 0, 0, 0.3);
+    --bg-primary: #fffef8;
+    --bg-secondary: #fff9e6;
+    --bg-tertiary: #fff3cc;
+    --text-primary: #2c2c2c;
+    --text-secondary: #5a5a5a;
+    --text-muted: #8a8a8a;
+    --accent: #e8c547;
+    --accent-hover: #d4a832;
+    --accent-light: #f5dc7a;
+    --blue-accent: #4a90c2;
+    --blue-accent-hover: #3a7aab;
+    --success: #5cb85c;
+    --warning: #f0ad4e;
+    --error: #d9534f;
+    --border: #e8ddb5;
+    --shadow: rgba(0, 0, 0, 0.1);
     --sidebar-width: 350px;
     --toolbar-height: 50px;
     --chat-panel-width: 450px;
@@ -120,12 +123,12 @@ html, body {
 }
 
 .connection-status.connected {
-    background: rgba(74, 222, 128, 0.1);
+    background: rgba(92, 184, 92, 0.15);
     color: var(--success);
 }
 
 .connection-status.disconnected {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(217, 83, 79, 0.15);
     color: var(--error);
 }
 
@@ -161,7 +164,7 @@ html, body {
 .toolbar-select:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.2);
+    box-shadow: 0 0 0 2px rgba(232, 197, 71, 0.3);
 }
 
 .toolbar-select option {
@@ -248,14 +251,14 @@ html, body {
 }
 
 .text-layer ::selection {
-    background: rgba(0, 120, 215, 0.4);
+    background: rgba(210, 140, 50, 0.5);
 }
 
 .text-layer.highlight-mode::after {
     content: '';
     position: absolute;
     inset: 0;
-    border: 3px solid var(--accent);
+    border: 3px solid #d28c32;
     border-radius: 4px;
     pointer-events: none;
 }
@@ -276,26 +279,26 @@ html, body {
     position: absolute;
     pointer-events: auto;
     cursor: pointer;
-    border: 1.5px solid rgba(0, 120, 215, 0.6);
-    background: rgba(0, 120, 215, 0.08);
+    border: 1.5px solid rgba(139, 90, 43, 0.6);
+    background: rgba(139, 90, 43, 0.1);
     border-radius: 2px;
     transition: background 0.15s ease, border-color 0.15s ease;
     text-decoration: none;
 }
 
 .pdf-link:hover {
-    background: rgba(0, 120, 215, 0.2);
-    border-color: rgba(0, 120, 215, 0.9);
+    background: rgba(139, 90, 43, 0.25);
+    border-color: rgba(139, 90, 43, 0.9);
 }
 
 .pdf-link[data-link-type="external"] {
-    border-color: rgba(0, 180, 100, 0.6);
-    background: rgba(0, 180, 100, 0.08);
+    border-color: rgba(230, 126, 34, 0.6);
+    background: rgba(230, 126, 34, 0.1);
 }
 
 .pdf-link[data-link-type="external"]:hover {
-    background: rgba(0, 180, 100, 0.2);
-    border-color: rgba(0, 180, 100, 0.9);
+    background: rgba(230, 126, 34, 0.25);
+    border-color: rgba(230, 126, 34, 0.9);
 }
 
 .page-number-label {
@@ -320,34 +323,34 @@ html, body {
 }
 
 .annotation-overlay.screenshot-annotation {
-    border: 2px solid var(--accent);
-    background: rgba(233, 69, 96, 0.1);
+    border: 2px solid #e07850;
+    background: rgba(224, 120, 80, 0.15);
     border-radius: 4px;
 }
 
 .annotation-overlay.screenshot-annotation:hover {
-    background: rgba(233, 69, 96, 0.25);
-    border-color: var(--accent-light);
+    background: rgba(224, 120, 80, 0.3);
+    border-color: #f08860;
 }
 
 .annotation-overlay.screenshot-annotation.active {
-    background: rgba(233, 69, 96, 0.3);
+    background: rgba(224, 120, 80, 0.4);
     border-width: 3px;
-    box-shadow: 0 0 8px rgba(233, 69, 96, 0.5);
+    box-shadow: 0 0 8px rgba(224, 120, 80, 0.6);
 }
 
 .annotation-overlay.text-annotation {
-    background: rgba(255, 215, 0, 0.3);
+    background: rgba(210, 140, 50, 0.35);
     border-radius: 2px;
 }
 
 .annotation-overlay.text-annotation:hover {
-    background: rgba(255, 215, 0, 0.5);
+    background: rgba(210, 140, 50, 0.5);
 }
 
 .annotation-overlay.text-annotation.active {
-    background: rgba(255, 215, 0, 0.5);
-    box-shadow: 0 0 4px rgba(255, 215, 0, 0.8);
+    background: rgba(210, 140, 50, 0.55);
+    box-shadow: 0 0 4px rgba(210, 140, 50, 0.8);
 }
 
 #welcome-message {
@@ -383,8 +386,9 @@ html, body {
     background: var(--accent);
     border: none;
     border-radius: 8px;
-    color: white;
+    color: #2c2c2c;
     font-size: 16px;
+    font-weight: 500;
     cursor: pointer;
     transition: background 0.2s ease;
 }
@@ -416,8 +420,8 @@ html, body {
 
 #selection-box {
     position: absolute;
-    border: 2px dashed var(--accent);
-    background: rgba(233, 69, 96, 0.1);
+    border: 2px dashed #e07850;
+    background: rgba(224, 120, 80, 0.2);
     pointer-events: none;
 }
 
@@ -464,7 +468,7 @@ html, body {
 }
 
 .icon-btn.danger:hover {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(217, 83, 79, 0.1);
     color: var(--error);
 }
 
@@ -507,7 +511,7 @@ html, body {
 
 .annotation-card.active {
     border-color: var(--accent);
-    background: rgba(233, 69, 96, 0.1);
+    background: rgba(232, 197, 71, 0.15);
 }
 
 .annotation-card-header {
@@ -641,7 +645,7 @@ html, body {
 }
 
 .chat-message.user .message-content {
-    background: var(--accent);
+    background: var(--blue-accent);
     color: white;
     border-bottom-right-radius: 4px;
 }
@@ -661,7 +665,7 @@ html, body {
 }
 
 .message-content pre {
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.06);
     padding: 12px;
     border-radius: 6px;
     overflow-x: auto;
@@ -720,7 +724,7 @@ html, body {
 }
 
 .message-actions button.delete:hover {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(217, 83, 79, 0.1);
     color: var(--error);
     border-color: var(--error);
 }
@@ -766,7 +770,7 @@ html, body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(26, 26, 46, 0.9);
+    background: rgba(255, 254, 248, 0.95);
     display: flex;
     flex-direction: column;
     align-items: center;
