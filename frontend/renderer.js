@@ -1996,9 +1996,16 @@ function initEventListeners() {
             case '+':
             case '=':
                 zoomIn();
-                break;
+                break; 
             case '-':
                 zoomOut();
+                break;
+            case 'Delete':
+            case 'Backspace':
+                if (state.currentAnnotationId) {
+                    e.preventDefault();
+                    deleteCurrentAnnotation();
+                }
                 break;
         }
     });

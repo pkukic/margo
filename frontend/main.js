@@ -263,7 +263,8 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
+            preload: path.join(__dirname, 'preload.js'),
+            zoomFactor: 1.0
         },
         icon: path.join(__dirname, 'assets', 'icon.png')
     });
@@ -271,10 +272,24 @@ function createWindow() {
     // Maximize window on start (keeps window decorations)
     mainWindow.maximize();
 
+    // Disable zoom keyboard shortcuts (Ctrl+Plus/Minus/0)
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.control && (input.key === '+' || input.key === '-' || input.key === '=' || input.key === '0')) {
+            event.preventDefault();
+        }
+    });
+
+    // Reset zoom to 100% on load
+    mainWindow.webContents.setZoomFactor(1.0);
+
     mainWindow.loadFile('index.html');
 
     // Once the window is ready, send the file to open if one was specified
     mainWindow.webContents.on('did-finish-load', () => {
+        // Force reset zoom to 100% after content loads
+        mainWindow.webContents.setZoomFactor(1.0);
+        mainWindow.webContents.setZoomLevel(0);
+        
         if (fileToOpen) {
             mainWindow.webContents.send('open-file', fileToOpen);
             fileToOpen = null;
