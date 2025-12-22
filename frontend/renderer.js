@@ -1785,13 +1785,23 @@ window.deleteMessage = async function(messageId) {
 async function deleteCurrentAnnotation() {
     if (!state.currentAnnotationId) return;
     
+    const annotationId = state.currentAnnotationId;
+    
     try {
         await apiRequest('/delete-annotation', {
             pdf_path: state.pdfPath,
-            annotation_id: state.currentAnnotationId
+            annotation_id: annotationId
         });
         
-        delete state.annotations[state.currentAnnotationId];
+        // Remove from annotations
+        delete state.annotations[annotationId];
+        
+        // Remove from visible annotations list
+        state.visibleAnnotationIds = state.visibleAnnotationIds.filter(id => id !== annotationId);
+        
+        // Clear current annotation ID before closing panel
+        state.currentAnnotationId = null;
+        
         closeChatPanel();
         updateAnnotationsList();
     } catch (error) {
@@ -1958,6 +1968,13 @@ function initEventListeners() {
             return;
         }
         
+        // Handle Ctrl+Delete or Ctrl+Backspace to delete current annotation
+        if (e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace') && state.currentAnnotationId) {
+            e.preventDefault();
+            deleteCurrentAnnotation();
+            return;
+        }
+        
         // Ignore other shortcuts if typing in input
         if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
         
@@ -1999,13 +2016,6 @@ function initEventListeners() {
                 break; 
             case '-':
                 zoomOut();
-                break;
-            case 'Delete':
-            case 'Backspace':
-                if (state.currentAnnotationId) {
-                    e.preventDefault();
-                    deleteCurrentAnnotation();
-                }
                 break;
         }
     });
