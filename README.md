@@ -16,11 +16,13 @@ The name has a dual meaning: *margo* is Latin for ["margin"](https://www.latin-i
 ## Features
 
 - 📄 **PDF Viewing**: Full-featured PDF reader with zoom, page navigation, and clickable links
-- 🖼️ **Screenshot Selection**: Select any region of the PDF to ask questions about
+- 🖼️ **Q&A Mode**: Select any region of the PDF to ask questions about (Ctrl+Q)
+- 📝 **Notes**: Highlight text and attach notes with text or drawings (Ctrl+N)
 - 📐 **LaTeX Support**: Full mathematical notation rendering in responses
-- 💾 **Auto-save**: All conversations saved to `.chat` files alongside PDFs
-- 🔄 **State Recovery**: Reopen any PDF and restore all annotations/chats
+- 💾 **Auto-save**: All conversations and notes saved to `.chat` files alongside PDFs
+- 🔄 **State Recovery**: Reopen any PDF and restore all annotations, notes, and chats
 - 🔗 **PDF Links**: Clickable internal and external links in PDFs
+- 🎯 **Smart Focus**: Annotations and notes auto-open when scrolled into view
 
 ## Tech Stack
 
@@ -106,14 +108,28 @@ After installation:
 ## Usage
 
 1. **Open a PDF**: Click "Open PDF" or use Ctrl+O, or right-click a PDF file
-2. **Screenshot Mode**: Press `Ctrl+S` or click the screenshot button, then drag to select an area
+2. **Q&A Mode**: Press `Ctrl+Q` or click the Q&A button, then drag to select an area
 3. **Ask a Question**: Type your question in the chat panel and press Enter
 4. **Follow-up Questions**: Continue the conversation in the same chat thread
-5. **Edit/Delete**: Hover over messages to edit or delete them
+5. **Notes**: Press `Ctrl+N` or click the Note button, then select text to highlight
+6. **Add Note Content**: Write text or draw a sketch in the note panel
+7. **Edit/Delete**: Hover over messages to edit or delete them, or use Ctrl+Delete to delete annotations/notes
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+O` | Open PDF |
+| `Ctrl+Q` | Toggle Q&A mode (screenshot selection) |
+| `Ctrl+N` | Toggle Note mode (text selection) |
+| `Ctrl+Delete` | Delete current annotation or note |
+| `Escape` | Close current panel / exit mode |
+| `←` / `→` | Previous / Next page |
+| `+` / `-` | Zoom in / out |
 
 ## File Format
 
-Conversations and screenshots are saved as `.chat` files (JSON format) alongside the PDF:
+Annotations, notes, and conversations are saved as `.chat` files (JSON format) alongside the PDF:
 
 ```
 my-paper.pdf
