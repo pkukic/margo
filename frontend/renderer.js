@@ -753,7 +753,7 @@ function setupScrollListener() {
         updateVisibleAnnotations();
         
         // Update visible notes based on scroll position
-        renderFloatingNotes();
+        updateVisibleNotes();
     });
 }
 
@@ -1938,9 +1938,10 @@ function updateNotesList() {
         });
     });
     
-    // Render note overlays on PDF
+    // Render note overlays on PDF, then update visibility
     renderNoteOverlays();
-    renderFloatingNotes();
+    // Use setTimeout to ensure overlays are in DOM before calculating visibility
+    setTimeout(() => updateVisibleNotes(), 0);
 }
 
 function createNoteCardHTML(note) {
@@ -1948,6 +1949,9 @@ function createNoteCardHTML(note) {
     const truncatedText = note.selected_text.length > 100 
         ? note.selected_text.substring(0, 100) + '...' 
         : note.selected_text;
+    
+    // Use AI-generated title if available, otherwise use page number
+    const title = note.title || `Page ${note.page_number}`;
     
     let contentPreview = '';
     if (note.content_type === 'drawing') {
@@ -1962,7 +1966,8 @@ function createNoteCardHTML(note) {
     return `
         <div class="note-card ${isActive ? 'active' : ''}" data-id="${note.id}">
             <div class="note-card-header">
-                <span class="note-card-page">Page ${note.page_number}</span>
+                <span class="note-card-title">${escapeHtml(title)}</span>
+                <span class="note-card-page">p. ${note.page_number}</span>
             </div>
             <div class="note-card-text">${escapeHtml(truncatedText)}</div>
             ${contentPreview}
@@ -2010,44 +2015,99 @@ function renderNoteOverlays() {
     }
 }
 
-function renderFloatingNotes() {
-    if (!elements.floatingNotesContainer) return;
+// ============================================
+// Auto-Open Notes on Scroll (mirrors annotation behavior)
+// ============================================
+
+function updateVisibleNotes() {
+    const containerRect = elements.pdfContainer.getBoundingClientRect();
+    const viewportTop = containerRect.top;
+    const viewportBottom = containerRect.bottom;
+    const viewportCenter = (viewportTop + viewportBottom) / 2;
+    const viewportHeight = viewportBottom - viewportTop;
     
-    elements.floatingNotesContainer.innerHTML = '';
+    // Calculate visibility score for each note
+    const noteScores = [];
     
-    // Get notes that are currently visible in viewport
-    const visibleNotes = [];
     for (const note of Object.values(state.notes)) {
         if (!note.bounding_box) continue;
         
         const overlay = document.querySelector(`.note-overlay[data-note-id="${note.id}"]`);
         if (!overlay) continue;
         
-        const rect = overlay.getBoundingClientRect();
-        const containerRect = elements.pdfContainer.getBoundingClientRect();
+        const overlayRect = overlay.getBoundingClientRect();
         
-        // Check if annotation is visible in viewport
-        if (rect.bottom > containerRect.top && rect.top < containerRect.bottom) {
-            visibleNotes.push({ note, rect });
+        // Check if note is in viewport
+        const isInView = overlayRect.bottom > viewportTop && overlayRect.top < viewportBottom;
+        if (!isInView) continue;
+        
+        // Calculate distance from center of viewport (lower = better)
+        const overlayCenter = (overlayRect.top + overlayRect.bottom) / 2;
+        const distanceFromCenter = Math.abs(overlayCenter - viewportCenter);
+        
+        // Calculate how much of the note is visible (0-1)
+        const visibleTop = Math.max(overlayRect.top, viewportTop);
+        const visibleBottom = Math.min(overlayRect.bottom, viewportBottom);
+        const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+        const visibilityRatio = visibleHeight / overlayRect.height;
+        
+        // Score: higher visibility + closer to center = better
+        const score = visibilityRatio * 1000 - distanceFromCenter;
+        
+        noteScores.push({
+            note,
+            score,
+            distanceFromCenter,
+            overlayRect
+        });
+    }
+    
+    // Sort by score (highest first) and take top N
+    noteScores.sort((a, b) => b.score - a.score);
+    const topNotes = noteScores.slice(0, state.maxVisibleNotes);
+    const newVisibleIds = topNotes.map(n => n.note.id);
+    
+    // Auto-close note panel if current note is no longer in viewport
+    if (state.currentNoteId) {
+        const currentInView = noteScores.find(n => n.note.id === state.currentNoteId);
+        if (!currentInView) {
+            closeNotePanel();
         }
     }
     
-    // Limit to max visible
-    const notesToShow = visibleNotes.slice(0, state.maxVisibleNotes);
-    state.visibleNoteIds = notesToShow.map(n => n.note.id);
+    // Check if visible notes changed
+    const oldIds = [...state.visibleNoteIds].sort().join(',');
+    const newIds = [...newVisibleIds].sort().join(',');
     
-    if (notesToShow.length === 0) {
+    if (oldIds !== newIds) {
+        state.visibleNoteIds = newVisibleIds;
+        renderFloatingNotes();
+    } else {
+        // Just update arrow positions
+        updateNoteArrows();
+    }
+}
+
+function renderFloatingNotes() {
+    if (!elements.floatingNotesContainer) return;
+    
+    elements.floatingNotesContainer.innerHTML = '';
+    
+    if (state.visibleNoteIds.length === 0) {
         elements.floatingNotesContainer.classList.add('hidden');
         return;
     }
     
+    // Show floating bubbles only when sidebar is collapsed
     if (!state.isNotesSidebarOpen) {
         elements.floatingNotesContainer.classList.remove('hidden');
     } else {
         elements.floatingNotesContainer.classList.add('hidden');
     }
     
-    for (const { note } of notesToShow) {
+    for (const noteId of state.visibleNoteIds) {
+        const note = state.notes[noteId];
+        if (!note) continue;
         const floatingEl = createFloatingNote(note);
         elements.floatingNotesContainer.appendChild(floatingEl);
     }
@@ -2068,6 +2128,9 @@ function createFloatingNote(note) {
         ? note.selected_text.substring(0, 60) + '...' 
         : note.selected_text;
     
+    // Use AI-generated title if available
+    const title = note.title || `Page ${note.page_number}`;
+    
     let contentHtml = '';
     if (note.content_type === 'drawing') {
         contentHtml = '<span class="floating-note-content">Drawing</span>';
@@ -2080,7 +2143,7 @@ function createFloatingNote(note) {
     
     div.innerHTML = `
         <div class="floating-note-header">
-            <span class="floating-note-title">Page ${note.page_number}</span>
+            <span class="floating-note-title">${escapeHtml(title)}</span>
             <button class="floating-note-close" title="Close">&times;</button>
         </div>
         <div class="floating-note-text">${escapeHtml(truncatedText)}</div>
@@ -2155,9 +2218,10 @@ function openNotePanel(noteId) {
     
     state.currentNoteId = noteId;
     
-    // Update UI
+    // Update UI - use AI-generated title if available
     elements.notePanel.classList.remove('hidden');
-    elements.noteTitle.textContent = `Note - Page ${note.page_number}`;
+    const title = note.title || `Page ${note.page_number}`;
+    elements.noteTitle.textContent = title;
     elements.noteSelectedTextContent.textContent = note.selected_text;
     
     // Set content type
@@ -2194,7 +2258,10 @@ function updateNoteContentMode() {
         elements.btnNoteDraw.classList.add('active');
         elements.noteTextInput.style.display = 'none';
         elements.noteDrawingContainer.classList.remove('hidden');
-        initDrawingCanvas();
+        // Wait for layout to complete before initializing canvas
+        requestAnimationFrame(() => {
+            initDrawingCanvas();
+        });
     }
 }
 
@@ -2297,17 +2364,24 @@ async function saveCurrentNote() {
         ? getDrawingContent() 
         : elements.noteTextInput.value;
     
+    // Generate title if note doesn't have one yet
+    const shouldGenerateTitle = !note.title;
+    
     try {
-        await apiRequest('/update-note', {
+        const result = await apiRequest('/update-note', {
             pdf_path: state.pdfPath,
             note_id: state.currentNoteId,
             content_type: contentType,
-            content: content
+            content: content,
+            generate_title: shouldGenerateTitle
         });
         
         // Update local state
         note.content_type = contentType;
         note.content = content;
+        if (result.title) {
+            note.title = result.title;
+        }
         
         updateNotesList();
         closeNotePanel();

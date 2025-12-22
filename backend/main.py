@@ -107,6 +107,7 @@ class UpdateNoteRequest(BaseModel):
     note_id: str
     content_type: Optional[str] = None
     content: Optional[str] = None
+    generate_title: bool = False  # Whether to generate AI title
 
 
 class DeleteNoteRequest(BaseModel):
@@ -362,11 +363,32 @@ async def create_note(request: CreateNoteRequest):
 async def update_note(request: UpdateNoteRequest):
     """Update a note's content."""
     try:
+        # Get the note first to access selected_text for title generation
+        chat_file = chat_storage.get_or_create_chat_file(request.pdf_path)
+        note = chat_file.notes.get(request.note_id)
+        
+        if not note:
+            raise HTTPException(status_code=404, detail="Note not found")
+        
+        # Generate title if requested and note doesn't have one yet
+        generated_title = None
+        if request.generate_title and not note.title and ai_service and ai_service.is_configured():
+            try:
+                # Generate a short title based on the highlighted text
+                generated_title = await ai_service.generate_note_title(
+                    selected_text=note.selected_text,
+                    note_content=request.content if request.content else ""
+                )
+            except Exception as e:
+                print(f"Error generating note title: {e}")
+                # Not critical, continue without title
+        
         success = chat_storage.update_note(
             pdf_path=request.pdf_path,
             note_id=request.note_id,
             content_type=request.content_type,
-            content=request.content
+            content=request.content,
+            title=generated_title
         )
         
         if not success:
@@ -375,7 +397,10 @@ async def update_note(request: UpdateNoteRequest):
         # Auto-save
         chat_storage.save(request.pdf_path)
         
-        return {"status": "ok"}
+        # Get updated note
+        updated_note = chat_file.notes.get(request.note_id)
+        
+        return {"status": "ok", "title": generated_title, "note": updated_note.to_dict() if updated_note else None}
     
     except HTTPException:
         raise

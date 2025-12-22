@@ -91,6 +91,8 @@ class Note:
     # Note content - either text or drawing (SVG path data)
     content_type: str = "text"  # "text" or "drawing"
     content: str = ""  # Text content or SVG path data
+    # AI-generated title for this note
+    title: Optional[str] = None
     
     def to_dict(self) -> dict:
         return {
@@ -100,7 +102,8 @@ class Note:
             "selected_text": self.selected_text,
             "bounding_box": self.bounding_box,
             "content_type": self.content_type,
-            "content": self.content
+            "content": self.content,
+            "title": self.title
         }
     
     @classmethod
@@ -112,7 +115,8 @@ class Note:
             selected_text=data.get("selected_text", ""),
             bounding_box=data.get("bounding_box"),
             content_type=data.get("content_type", "text"),
-            content=data.get("content", "")
+            content=data.get("content", ""),
+            title=data.get("title")
         )
 
 
@@ -351,7 +355,8 @@ class ChatStorage:
         pdf_path: str,
         note_id: str,
         content_type: Optional[str] = None,
-        content: Optional[str] = None
+        content: Optional[str] = None,
+        title: Optional[str] = None
     ) -> bool:
         """Update a note's content."""
         chat_file = self.get_or_create_chat_file(pdf_path)
@@ -364,6 +369,8 @@ class ChatStorage:
             note.content_type = content_type
         if content is not None:
             note.content = content
+        if title is not None:
+            note.title = title
         return True
 
     def delete_note(

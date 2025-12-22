@@ -203,3 +203,52 @@ Title:"""
         except Exception as e:
             print(f"Title generation error: {e}")
             return None
+
+    async def generate_note_title(
+        self,
+        selected_text: str,
+        note_content: str = ""
+    ) -> Optional[str]:
+        """Generate a short, descriptive title for a note based on the highlighted text."""
+        
+        if not self.gemini_client:
+            raise ValueError("Gemini API not configured")
+        
+        # Build a simple prompt for note title generation
+        prompt = f"""Generate a SHORT title (3-5 words) that summarizes this highlighted text from an academic paper. Return ONLY the title, nothing else.
+
+Highlighted text: {selected_text[:500]}
+
+Title:"""
+        
+        contents = [types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=prompt)]
+        )]
+        
+        config = types.GenerateContentConfig(
+            temperature=0.3
+        )
+        
+        try:
+            response = self.gemini_client.models.generate_content(
+                model=self.current_model,
+                contents=contents,
+                config=config
+            )
+            
+            if response and response.text:
+                title = response.text.strip().strip('"').strip("'").strip()
+                # Remove common prefixes the model might add
+                for prefix in ["Title:", "title:", "**", "##"]:
+                    if title.startswith(prefix):
+                        title = title[len(prefix):].strip()
+                # Limit length
+                if len(title) > 50:
+                    title = title[:47] + "..."
+                return title if title else None
+            else:
+                return None
+        except Exception as e:
+            print(f"Note title generation error: {e}")
+            return None
