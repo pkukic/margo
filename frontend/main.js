@@ -7,7 +7,8 @@ const net = require('net');
 let mainWindow;
 let backendProcess = null;
 let backendPort = null;
-let fileToOpen = null; // Store file path passed via command line or file association
+let fileToOpen = null; // Store file path passed via command line or file association (for event-based opening)
+let startupFilePath = null; // Store file path for synchronous IPC retrieval (survives did-finish-load)
 
 // Settings file path in user data directory
 const settingsPath = path.join(app.getPath('userData'), 'margo-settings.json');
@@ -59,7 +60,7 @@ function findBackendDir() {
         path.join(app.getAppPath(), '..', 'backend'),  // Alongside app.asar
         '/opt/Margo/resources/backend',  // Linux installed location
     ];
-    
+
     for (const p of possiblePaths) {
         if (fs.existsSync(path.join(p, 'main.py'))) {
             return p;
@@ -77,15 +78,15 @@ function ensureWritableBackend(sourceDir) {
     } catch (e) {
         // Not writable, copy to user data directory
     }
-    
+
     const userDataPath = app.getPath('userData');
     const userBackendDir = path.join(userDataPath, 'backend');
     const sourceMainPy = path.join(sourceDir, 'main.py');
     const destMainPy = path.join(userBackendDir, 'main.py');
-    
+
     // Check if we need to copy (first run or update)
     let needsCopy = !fs.existsSync(destMainPy);
-    
+
     if (!needsCopy) {
         // Check if source is newer
         try {
@@ -96,21 +97,21 @@ function ensureWritableBackend(sourceDir) {
             needsCopy = true;
         }
     }
-    
+
     if (needsCopy) {
         console.log(`Copying backend to ${userBackendDir}...`);
-        
+
         // Create directory
         if (!fs.existsSync(userBackendDir)) {
             fs.mkdirSync(userBackendDir, { recursive: true });
         }
-        
+
         // Copy all Python files and config
         const filesToCopy = fs.readdirSync(sourceDir);
         for (const file of filesToCopy) {
             const srcPath = path.join(sourceDir, file);
             const destPath = path.join(userBackendDir, file);
-            
+
             // Skip directories like .venv
             const stat = fs.statSync(srcPath);
             if (stat.isFile()) {
@@ -119,28 +120,28 @@ function ensureWritableBackend(sourceDir) {
         }
         console.log('Backend copied successfully');
     }
-    
+
     return userBackendDir;
 }
 
 // Start the Python backend
 async function startBackend() {
     let backendDir = findBackendDir();
-    
+
     if (!backendDir) {
         console.error('Backend directory not found');
         return null;
     }
-    
+
     // Ensure we have a writable backend directory
     backendDir = ensureWritableBackend(backendDir);
-    
+
     backendPort = await findFreePort(8765);
     console.log(`Starting backend on port ${backendPort} from ${backendDir}...`);
-    
+
     // Set environment variables
     const env = { ...process.env, PORT: backendPort.toString() };
-    
+
     // Load .env file if it exists
     const envPath = path.join(backendDir, '.env');
     if (fs.existsSync(envPath)) {
@@ -152,14 +153,14 @@ async function startBackend() {
             }
         }
     }
-    
+
     // Set UV_PROJECT_ENVIRONMENT to a user-writable location
     // This is needed when the backend is installed in /opt (read-only)
     const userDataPath = app.getPath('userData');
     const backendVenvPath = path.join(userDataPath, 'backend-venv');
     env.UV_PROJECT_ENVIRONMENT = backendVenvPath;
     console.log(`Using venv location: ${backendVenvPath}`);
-    
+
     // Find uv - required for running the backend
     const uvPaths = [
         path.join(process.env.HOME || '', '.local', 'bin', 'uv'),
@@ -167,7 +168,7 @@ async function startBackend() {
         '/usr/bin/uv',
         'uv'  // Fallback to PATH
     ];
-    
+
     let uvCmd = null;
     for (const p of uvPaths) {
         if (p === 'uv' || fs.existsSync(p)) {
@@ -175,40 +176,40 @@ async function startBackend() {
             break;
         }
     }
-    
+
     if (!uvCmd) {
         console.error('uv is required but not found. Please install uv: https://docs.astral.sh/uv/');
         return null;
     }
-    
+
     console.log(`Using uv at: ${uvCmd}`);
     const args = ['run', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', backendPort.toString()];
-    
+
     console.log(`Running: ${uvCmd} ${args.join(' ')}`);
-    
+
     backendProcess = spawn(uvCmd, args, {
         cwd: backendDir,
         env: env,
         stdio: ['ignore', 'pipe', 'pipe']
     });
-    
+
     backendProcess.stdout.on('data', (data) => {
         console.log(`Backend: ${data}`);
     });
-    
+
     backendProcess.stderr.on('data', (data) => {
         console.error(`Backend: ${data}`);
     });
-    
+
     backendProcess.on('close', (code) => {
         console.log(`Backend process exited with code ${code}`);
         backendProcess = null;
     });
-    
+
     backendProcess.on('error', (err) => {
         console.error(`Backend spawn error: ${err}`);
     });
-    
+
     // Wait for backend to be ready (reduced timeout for faster startup)
     const maxRetries = 60;  // 60 * 100ms = 6 seconds max
     for (let i = 0; i < maxRetries; i++) {
@@ -227,7 +228,7 @@ async function startBackend() {
             await new Promise(r => setTimeout(r, 100));  // 100ms between retries
         }
     }
-    
+
     console.error('Backend failed to start');
     return null;
 }
@@ -254,7 +255,10 @@ function getFileFromArgs(args) {
 }
 
 // Handle file open from command line (Linux "Open with...")
-fileToOpen = getFileFromArgs(process.argv);
+const parsedFile = getFileFromArgs(process.argv);
+fileToOpen = parsedFile;
+startupFilePath = parsedFile; // Keep a separate copy that won't be cleared by did-finish-load
+console.log('Parsed startup file from argv:', parsedFile);
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -289,7 +293,7 @@ function createWindow() {
         // Force reset zoom to 100% after content loads
         mainWindow.webContents.setZoomFactor(1.0);
         mainWindow.webContents.setZoomLevel(0);
-        
+
         if (fileToOpen) {
             mainWindow.webContents.send('open-file', fileToOpen);
             fileToOpen = null;
@@ -312,7 +316,7 @@ function createWindow() {
 app.whenReady().then(async () => {
     // Create window immediately for fast perceived startup
     createWindow();
-    
+
     // Start the backend in parallel
     startBackend().then((port) => {
         if (port) {
@@ -323,7 +327,7 @@ app.whenReady().then(async () => {
             }
         }
     });
-    
+
     // Send file to open once window is ready
     mainWindow.webContents.on('did-finish-load', () => {
         // Send port if already available
@@ -383,11 +387,11 @@ ipcMain.handle('open-file-dialog', async () => {
             { name: 'PDF Files', extensions: ['pdf'] }
         ]
     });
-    
+
     if (result.canceled) {
         return null;
     }
-    
+
     return result.filePaths[0];
 });
 
@@ -452,4 +456,13 @@ ipcMain.handle('open-external', async (event, url) => {
         console.error('Error opening external URL:', err);
         return false;
     }
+});
+
+// Get startup file (to avoid race conditions with restoreLastPDF)
+// This uses startupFilePath which is not cleared by did-finish-load handlers
+ipcMain.handle('get-startup-file', () => {
+    const file = startupFilePath;
+    console.log('get-startup-file called, returning:', file);
+    startupFilePath = null; // Clear it after returning so it's only used once
+    return file;
 });
