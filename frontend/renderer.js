@@ -127,7 +127,7 @@ const elements = {
     noteDrawingContainer: document.getElementById('note-drawing-container'),
     noteDrawingCanvas: document.getElementById('note-drawing-canvas'),
     btnClearDrawing: document.getElementById('btn-clear-drawing'),
-    btnSaveNote: document.getElementById('btn-save-note'),
+
     
     // Floating notes
     floatingNotesContainer: document.getElementById('floating-notes-container'),
@@ -2397,7 +2397,18 @@ function getDrawingContent() {
     return JSON.stringify(state.drawingPaths);
 }
 
-async function saveCurrentNote() {
+// Debounced autosave for notes
+let noteAutosaveTimeout = null;
+function scheduleNoteAutosave() {
+    if (noteAutosaveTimeout) {
+        clearTimeout(noteAutosaveTimeout);
+    }
+    noteAutosaveTimeout = setTimeout(() => {
+        saveCurrentNote(false); // Don't show error alerts for autosave
+    }, 500);
+}
+
+async function saveCurrentNote(showErrors = true) {
     if (!state.currentNoteId) return;
     
     const note = state.notes[state.currentNoteId];
@@ -2428,10 +2439,11 @@ async function saveCurrentNote() {
         }
         
         updateNotesList();
-        closeNotePanel();
     } catch (error) {
         console.error('Failed to save note:', error);
-        alert('Failed to save note: ' + error.message);
+        if (showErrors) {
+            alert('Failed to save note: ' + error.message);
+        }
     }
 }
 
@@ -2736,8 +2748,9 @@ function initEventListeners() {
     if (elements.btnDeleteNote) {
         elements.btnDeleteNote.addEventListener('click', deleteCurrentNote);
     }
-    if (elements.btnSaveNote) {
-        elements.btnSaveNote.addEventListener('click', saveCurrentNote);
+    // Note text autosave
+    if (elements.noteTextInput) {
+        elements.noteTextInput.addEventListener('input', scheduleNoteAutosave);
     }
     if (elements.btnNoteText) {
         elements.btnNoteText.addEventListener('click', () => {
@@ -2785,10 +2798,14 @@ function initEventListeners() {
         
         elements.noteDrawingCanvas.addEventListener('mouseup', () => {
             state.isDrawing = false;
+            scheduleNoteAutosave();
         });
         
         elements.noteDrawingCanvas.addEventListener('mouseleave', () => {
-            state.isDrawing = false;
+            if (state.isDrawing) {
+                state.isDrawing = false;
+                scheduleNoteAutosave();
+            }
         });
     }
     
