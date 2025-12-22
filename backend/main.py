@@ -91,6 +91,29 @@ class SaveChatRequest(BaseModel):
     chat_data: dict
 
 
+# Note request models
+class CreateNoteRequest(BaseModel):
+    pdf_path: str
+    note_id: str
+    page_number: int
+    selected_text: str
+    bounding_box: Optional[dict] = None
+    content_type: str = "text"
+    content: str = ""
+
+
+class UpdateNoteRequest(BaseModel):
+    pdf_path: str
+    note_id: str
+    content_type: Optional[str] = None
+    content: Optional[str] = None
+
+
+class DeleteNoteRequest(BaseModel):
+    pdf_path: str
+    note_id: str
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -304,6 +327,81 @@ async def save_chat(request: SaveChatRequest):
         chat_storage.save(request.pdf_path)
         return {"status": "ok"}
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# Note endpoints
+# ============================================
+
+@app.post("/create-note")
+async def create_note(request: CreateNoteRequest):
+    """Create a new note on a PDF."""
+    try:
+        note = chat_storage.create_note(
+            pdf_path=request.pdf_path,
+            note_id=request.note_id,
+            page_number=request.page_number,
+            selected_text=request.selected_text,
+            bounding_box=request.bounding_box,
+            content_type=request.content_type,
+            content=request.content
+        )
+        
+        # Auto-save
+        chat_storage.save(request.pdf_path)
+        
+        return {"status": "ok", "note": note.to_dict()}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/update-note")
+async def update_note(request: UpdateNoteRequest):
+    """Update a note's content."""
+    try:
+        success = chat_storage.update_note(
+            pdf_path=request.pdf_path,
+            note_id=request.note_id,
+            content_type=request.content_type,
+            content=request.content
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Note not found")
+        
+        # Auto-save
+        chat_storage.save(request.pdf_path)
+        
+        return {"status": "ok"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/delete-note")
+async def delete_note(request: DeleteNoteRequest):
+    """Delete a note."""
+    try:
+        success = chat_storage.delete_note(
+            pdf_path=request.pdf_path,
+            note_id=request.note_id
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Note not found")
+        
+        # Auto-save
+        chat_storage.save(request.pdf_path)
+        
+        return {"status": "ok"}
+    
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
