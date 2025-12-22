@@ -41,6 +41,7 @@ const state = {
     maxVisibleNotes: 3,
     isNotesSidebarOpen: false,
     isNoteSelectionMode: false, // Mode for selecting text to create notes
+    autoOpenedNoteId: null, // Track which note was auto-opened
     noteContentType: 'text', // 'text' or 'drawing'
     drawingPaths: [], // For the drawing canvas
     isDrawing: false,
@@ -2067,6 +2068,33 @@ function updateVisibleNotes() {
     const topNotes = noteScores.slice(0, state.maxVisibleNotes);
     const newVisibleIds = topNotes.map(n => n.note.id);
     
+    // Auto-focus note closest to center (mirrors annotation behavior)
+    if (topNotes.length > 0) {
+        const closest = topNotes[0];
+        const threshold = viewportHeight * 0.25;
+        
+        // If sidebar is open, always switch focus to the closest note
+        if (state.isNotesSidebarOpen && closest.distanceFromCenter < threshold) {
+            if (state.currentNoteId !== closest.note.id) {
+                // Switch to the closer note
+                openNotePanel(closest.note.id);
+            }
+        }
+        // If sidebar is closed and note panel is hidden, auto-open
+        else if (!state.isNotesSidebarOpen && elements.notePanel.classList.contains('hidden')) {
+            if (closest.distanceFromCenter < threshold * 0.8) {
+                autoOpenNotePanel(closest.note.id);
+            }
+        }
+        // If note panel is open and was auto-opened, switch to closer note
+        else if (!state.isNotesSidebarOpen && state.autoOpenedNoteId && 
+                 state.currentNoteId !== closest.note.id) {
+            if (closest.distanceFromCenter < threshold) {
+                autoOpenNotePanel(closest.note.id);
+            }
+        }
+    }
+    
     // Auto-close note panel if current note is no longer in viewport
     if (state.currentNoteId) {
         const currentInView = noteScores.find(n => n.note.id === state.currentNoteId);
@@ -2239,9 +2267,25 @@ function openNotePanel(noteId) {
     updateNotesList();
 }
 
+// Auto-open note panel when note approaches center of screen
+function autoOpenNotePanel(noteId) {
+    const note = state.notes[noteId];
+    if (!note) return;
+    
+    // Don't auto-open if already showing this note
+    if (state.currentNoteId === noteId) return;
+    
+    // Track that this was auto-opened (so we can auto-close it)
+    state.autoOpenedNoteId = noteId;
+    
+    // Open the note panel
+    openNotePanel(noteId);
+}
+
 function closeNotePanel() {
     elements.notePanel.classList.add('hidden');
     state.currentNoteId = null;
+    state.autoOpenedNoteId = null; // Clear auto-opened tracking
     elements.noteTextInput.value = '';
     clearDrawingCanvas();
     updateNotesList();
