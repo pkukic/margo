@@ -79,6 +79,48 @@ class Annotation:
 
 
 @dataclass
+class Note:
+    """A note on a PDF - represents a text highlight with a comment or drawing."""
+    id: str
+    page_number: int
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    # The highlighted text from the PDF
+    selected_text: str = ""
+    # Bounding box of the text selection {x, y, width, height} in PDF coordinates
+    bounding_box: Optional[dict] = None
+    # Note content - either text or drawing (SVG path data)
+    content_type: str = "text"  # "text" or "drawing"
+    content: str = ""  # Text content or SVG path data
+    # AI-generated title for this note
+    title: Optional[str] = None
+    
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "page_number": self.page_number,
+            "created_at": self.created_at,
+            "selected_text": self.selected_text,
+            "bounding_box": self.bounding_box,
+            "content_type": self.content_type,
+            "content": self.content,
+            "title": self.title
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "Note":
+        return cls(
+            id=data["id"],
+            page_number=data["page_number"],
+            created_at=data.get("created_at", datetime.now().isoformat()),
+            selected_text=data.get("selected_text", ""),
+            bounding_box=data.get("bounding_box"),
+            content_type=data.get("content_type", "text"),
+            content=data.get("content", ""),
+            title=data.get("title")
+        )
+
+
+@dataclass
 class ChatFile:
     """Represents the entire .chat file for a PDF."""
     pdf_path: str
@@ -86,6 +128,7 @@ class ChatFile:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     annotations: Dict[str, Annotation] = field(default_factory=dict)
+    notes: Dict[str, Note] = field(default_factory=dict)
     
     def to_dict(self) -> dict:
         return {
@@ -93,7 +136,8 @@ class ChatFile:
             "pdf_name": self.pdf_name,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "annotations": {k: v.to_dict() for k, v in self.annotations.items()}
+            "annotations": {k: v.to_dict() for k, v in self.annotations.items()},
+            "notes": {k: v.to_dict() for k, v in self.notes.items()}
         }
     
     @classmethod
@@ -103,7 +147,8 @@ class ChatFile:
             pdf_name=data["pdf_name"],
             created_at=data.get("created_at", datetime.now().isoformat()),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
-            annotations={k: Annotation.from_dict(v) for k, v in data.get("annotations", {}).items()}
+            annotations={k: Annotation.from_dict(v) for k, v in data.get("annotations", {}).items()},
+            notes={k: Note.from_dict(v) for k, v in data.get("notes", {}).items()}
         )
 
 
@@ -275,4 +320,69 @@ class ChatStorage:
             return False
         
         del chat_file.annotations[annotation_id]
+        return True
+
+    # ============================================
+    # Note methods
+    # ============================================
+
+    def create_note(
+        self,
+        pdf_path: str,
+        note_id: str,
+        page_number: int,
+        selected_text: str,
+        bounding_box: Optional[dict] = None,
+        content_type: str = "text",
+        content: str = ""
+    ) -> Note:
+        """Create a new note."""
+        chat_file = self.get_or_create_chat_file(pdf_path)
+        
+        note = Note(
+            id=note_id,
+            page_number=page_number,
+            selected_text=selected_text,
+            bounding_box=bounding_box,
+            content_type=content_type,
+            content=content
+        )
+        chat_file.notes[note_id] = note
+        return note
+
+    def update_note(
+        self,
+        pdf_path: str,
+        note_id: str,
+        content_type: Optional[str] = None,
+        content: Optional[str] = None,
+        title: Optional[str] = None
+    ) -> bool:
+        """Update a note's content."""
+        chat_file = self.get_or_create_chat_file(pdf_path)
+        
+        if note_id not in chat_file.notes:
+            return False
+        
+        note = chat_file.notes[note_id]
+        if content_type is not None:
+            note.content_type = content_type
+        if content is not None:
+            note.content = content
+        if title is not None:
+            note.title = title
+        return True
+
+    def delete_note(
+        self,
+        pdf_path: str,
+        note_id: str
+    ) -> bool:
+        """Delete a note."""
+        chat_file = self.get_or_create_chat_file(pdf_path)
+        
+        if note_id not in chat_file.notes:
+            return False
+        
+        del chat_file.notes[note_id]
         return True

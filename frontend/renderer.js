@@ -34,6 +34,18 @@ const state = {
     maxVisibleAnnotations: 3,
     autoOpenedAnnotationId: null, // Track which annotation was auto-opened
     
+    // Notes state
+    notes: {},
+    currentNoteId: null,
+    visibleNoteIds: [],
+    maxVisibleNotes: 3,
+    isNotesSidebarOpen: false,
+    isNoteSelectionMode: false, // Mode for selecting text to create notes
+    autoOpenedNoteId: null, // Track which note was auto-opened
+    noteContentType: 'text', // 'text' or 'drawing'
+    drawingPaths: [], // For the drawing canvas
+    isDrawing: false,
+    
     // Sidebar state
     isSidebarOpen: false,
     
@@ -95,6 +107,31 @@ const elements = {
     // Floating annotations
     floatingAnnotationsContainer: document.getElementById('floating-annotations-container'),
     annotationArrows: document.getElementById('annotation-arrows'),
+    
+    // Notes Sidebar (Left)
+    notesSidebar: document.getElementById('notes-sidebar'),
+    btnToggleNotesSidebar: document.getElementById('btn-toggle-notes-sidebar'),
+    btnNoteMode: document.getElementById('btn-note-mode'),
+    notesList: document.getElementById('notes-list'),
+    noNotes: document.getElementById('no-notes'),
+    
+    // Note Panel
+    notePanel: document.getElementById('note-panel'),
+    btnCloseNote: document.getElementById('btn-close-note'),
+    btnDeleteNote: document.getElementById('btn-delete-note'),
+    btnNoteText: document.getElementById('btn-note-text'),
+    btnNoteDraw: document.getElementById('btn-note-draw'),
+    noteTitle: document.getElementById('note-title'),
+    noteSelectedTextContent: document.getElementById('note-selected-text-content'),
+    noteTextInput: document.getElementById('note-text-input'),
+    noteDrawingContainer: document.getElementById('note-drawing-container'),
+    noteDrawingCanvas: document.getElementById('note-drawing-canvas'),
+    btnClearDrawing: document.getElementById('btn-clear-drawing'),
+    btnSaveNote: document.getElementById('btn-save-note'),
+    
+    // Floating notes
+    floatingNotesContainer: document.getElementById('floating-notes-container'),
+    noteArrows: document.getElementById('note-arrows'),
     
     // Loading
     loadingOverlay: document.getElementById('loading-overlay'),
@@ -715,6 +752,9 @@ function setupScrollListener() {
         
         // Update visible annotations based on scroll position
         updateVisibleAnnotations();
+        
+        // Update visible notes based on scroll position
+        updateVisibleNotes();
     });
 }
 
@@ -728,6 +768,9 @@ function updatePageInfo(pageNum) {
     
     // Update annotations display
     updateAnnotationsList();
+    
+    // Update notes display
+    updateNotesList();
 }
 
 // ============================================
@@ -740,11 +783,19 @@ async function loadChatData() {
     try {
         const result = await apiRequest('/load-chat', { pdf_path: state.pdfPath });
         if (result.chat_data) {
+            // Load annotations
             state.annotations = {};
             for (const [id, annotation] of Object.entries(result.chat_data.annotations || {})) {
                 state.annotations[id] = annotation;
             }
             updateAnnotationsList();
+            
+            // Load notes
+            state.notes = {};
+            for (const [id, note] of Object.entries(result.chat_data.notes || {})) {
+                state.notes[id] = note;
+            }
+            updateNotesList();
         }
     } catch (e) {
         console.log('No existing chat data or backend unavailable');
@@ -768,6 +819,28 @@ function disableScreenshotMode() {
     elements.selectionBox.style.display = 'none';
     state.selectionStart = null;
     state.selectionEnd = null;
+}
+
+// Note selection mode - for selecting text to attach notes
+function enableNoteSelectionMode() {
+    state.isNoteSelectionMode = true;
+    if (elements.btnNoteMode) {
+        elements.btnNoteMode.classList.add('active');
+    }
+    // Add visual indicator to PDF container
+    elements.pdfContainer.classList.add('note-selection-mode');
+    // Disable screenshot mode if active
+    if (state.isScreenshotMode) {
+        disableScreenshotMode();
+    }
+}
+
+function disableNoteSelectionMode() {
+    state.isNoteSelectionMode = false;
+    if (elements.btnNoteMode) {
+        elements.btnNoteMode.classList.remove('active');
+    }
+    elements.pdfContainer.classList.remove('note-selection-mode');
 }
 
 function handleSelectionStart(e) {
@@ -1811,6 +1884,684 @@ async function deleteCurrentAnnotation() {
 }
 
 // ============================================
+// Notes Functions
+// ============================================
+
+function generateNoteId() {
+    return 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function toggleNotesSidebar() {
+    state.isNotesSidebarOpen = !state.isNotesSidebarOpen;
+    
+    if (state.isNotesSidebarOpen) {
+        elements.notesSidebar.classList.remove('collapsed');
+        elements.floatingNotesContainer.classList.add('sidebar-open');
+    } else {
+        elements.notesSidebar.classList.add('collapsed');
+        elements.floatingNotesContainer.classList.remove('sidebar-open');
+    }
+    
+    updateNoteArrows();
+}
+
+function updateNotesList() {
+    if (!elements.notesList) return;
+    
+    const notesArray = Object.values(state.notes);
+    
+    // Sort by page number, then by creation time
+    notesArray.sort((a, b) => {
+        if (a.page_number !== b.page_number) {
+            return a.page_number - b.page_number;
+        }
+        return new Date(a.created_at) - new Date(b.created_at);
+    });
+    
+    if (notesArray.length === 0) {
+        elements.notesList.innerHTML = `
+            <div id="no-notes" class="empty-state">
+                <p>No notes yet</p>
+                <p class="hint">Press Ctrl+N or click Note, then select text</p>
+            </div>
+        `;
+        elements.floatingNotesContainer.classList.add('hidden');
+        return;
+    }
+    
+    elements.notesList.innerHTML = notesArray.map(note => createNoteCardHTML(note)).join('');
+    
+    // Add click handlers
+    elements.notesList.querySelectorAll('.note-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const noteId = card.dataset.id;
+            openNotePanel(noteId);
+        });
+    });
+    
+    // Render note overlays on PDF, then update visibility
+    renderNoteOverlays();
+    // Use setTimeout to ensure overlays are in DOM before calculating visibility
+    setTimeout(() => updateVisibleNotes(), 0);
+}
+
+function createNoteCardHTML(note) {
+    const isActive = note.id === state.currentNoteId;
+    const truncatedText = note.selected_text.length > 100 
+        ? note.selected_text.substring(0, 100) + '...' 
+        : note.selected_text;
+    
+    // Use AI-generated title if available, otherwise use page number
+    const title = note.title || `Page ${note.page_number}`;
+    
+    let contentPreview = '';
+    if (note.content_type === 'drawing') {
+        contentPreview = '<div class="note-card-content drawing-preview">Drawing</div>';
+    } else if (note.content) {
+        const truncatedContent = note.content.length > 80 
+            ? note.content.substring(0, 80) + '...' 
+            : note.content;
+        contentPreview = `<div class="note-card-content">${escapeHtml(truncatedContent)}</div>`;
+    }
+    
+    return `
+        <div class="note-card ${isActive ? 'active' : ''}" data-id="${note.id}">
+            <div class="note-card-header">
+                <span class="note-card-title">${escapeHtml(title)}</span>
+                <span class="note-card-page">p. ${note.page_number}</span>
+            </div>
+            <div class="note-card-text">${escapeHtml(truncatedText)}</div>
+            ${contentPreview}
+        </div>
+    `;
+}
+
+function renderNoteOverlays() {
+    // Remove existing note overlays
+    document.querySelectorAll('.note-overlay').forEach(el => el.remove());
+    
+    for (const note of Object.values(state.notes)) {
+        if (!note.bounding_box) continue;
+        
+        const pageWrapper = elements.pagesContainer.querySelector(
+            `[data-page-num="${note.page_number}"]`
+        );
+        if (!pageWrapper) continue;
+        
+        const canvas = pageWrapper.querySelector('canvas');
+        if (!canvas) continue;
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'note-overlay';
+        overlay.dataset.noteId = note.id;
+        
+        if (note.id === state.currentNoteId) {
+            overlay.classList.add('active');
+        }
+        
+        // Convert PDF coordinates to canvas coordinates
+        // Note: CSS transform handles zoomLevel, so we only multiply by renderScale
+        const scale = state.renderScale;
+        overlay.style.left = `${note.bounding_box.x * scale}px`;
+        overlay.style.top = `${note.bounding_box.y * scale}px`;
+        overlay.style.width = `${note.bounding_box.width * scale}px`;
+        overlay.style.height = `${note.bounding_box.height * scale}px`;
+        
+        overlay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openNotePanel(note.id);
+        });
+        
+        pageWrapper.appendChild(overlay);
+    }
+}
+
+// ============================================
+// Auto-Open Notes on Scroll (mirrors annotation behavior)
+// ============================================
+
+function updateVisibleNotes() {
+    const containerRect = elements.pdfContainer.getBoundingClientRect();
+    const viewportTop = containerRect.top;
+    const viewportBottom = containerRect.bottom;
+    const viewportCenter = (viewportTop + viewportBottom) / 2;
+    const viewportHeight = viewportBottom - viewportTop;
+    
+    // Calculate visibility score for each note
+    const noteScores = [];
+    
+    for (const note of Object.values(state.notes)) {
+        if (!note.bounding_box) continue;
+        
+        const overlay = document.querySelector(`.note-overlay[data-note-id="${note.id}"]`);
+        if (!overlay) continue;
+        
+        const overlayRect = overlay.getBoundingClientRect();
+        
+        // Check if note is in viewport
+        const isInView = overlayRect.bottom > viewportTop && overlayRect.top < viewportBottom;
+        if (!isInView) continue;
+        
+        // Calculate distance from center of viewport (lower = better)
+        const overlayCenter = (overlayRect.top + overlayRect.bottom) / 2;
+        const distanceFromCenter = Math.abs(overlayCenter - viewportCenter);
+        
+        // Calculate how much of the note is visible (0-1)
+        const visibleTop = Math.max(overlayRect.top, viewportTop);
+        const visibleBottom = Math.min(overlayRect.bottom, viewportBottom);
+        const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+        const visibilityRatio = visibleHeight / overlayRect.height;
+        
+        // Score: higher visibility + closer to center = better
+        const score = visibilityRatio * 1000 - distanceFromCenter;
+        
+        noteScores.push({
+            note,
+            score,
+            distanceFromCenter,
+            overlayRect
+        });
+    }
+    
+    // Sort by score (highest first) and take top N
+    noteScores.sort((a, b) => b.score - a.score);
+    const topNotes = noteScores.slice(0, state.maxVisibleNotes);
+    const newVisibleIds = topNotes.map(n => n.note.id);
+    
+    // Auto-focus note closest to center (mirrors annotation behavior)
+    if (topNotes.length > 0) {
+        const closest = topNotes[0];
+        const threshold = viewportHeight * 0.25;
+        
+        // If sidebar is open, always switch focus to the closest note
+        if (state.isNotesSidebarOpen && closest.distanceFromCenter < threshold) {
+            if (state.currentNoteId !== closest.note.id) {
+                // Switch to the closer note
+                openNotePanel(closest.note.id);
+            }
+        }
+        // If sidebar is closed and note panel is hidden, auto-open
+        else if (!state.isNotesSidebarOpen && elements.notePanel.classList.contains('hidden')) {
+            if (closest.distanceFromCenter < threshold * 0.8) {
+                autoOpenNotePanel(closest.note.id);
+            }
+        }
+        // If note panel is open and was auto-opened, switch to closer note
+        else if (!state.isNotesSidebarOpen && state.autoOpenedNoteId && 
+                 state.currentNoteId !== closest.note.id) {
+            if (closest.distanceFromCenter < threshold) {
+                autoOpenNotePanel(closest.note.id);
+            }
+        }
+    }
+    
+    // Auto-close note panel if current note is no longer in viewport
+    if (state.currentNoteId) {
+        const currentInView = noteScores.find(n => n.note.id === state.currentNoteId);
+        if (!currentInView) {
+            closeNotePanel();
+        }
+    }
+    
+    // Check if visible notes changed
+    const oldIds = [...state.visibleNoteIds].sort().join(',');
+    const newIds = [...newVisibleIds].sort().join(',');
+    
+    if (oldIds !== newIds) {
+        state.visibleNoteIds = newVisibleIds;
+        renderFloatingNotes();
+    } else {
+        // Just update arrow positions
+        updateNoteArrows();
+    }
+}
+
+function renderFloatingNotes() {
+    if (!elements.floatingNotesContainer) return;
+    
+    elements.floatingNotesContainer.innerHTML = '';
+    
+    if (state.visibleNoteIds.length === 0) {
+        elements.floatingNotesContainer.classList.add('hidden');
+        return;
+    }
+    
+    // Show floating bubbles only when sidebar is collapsed
+    if (!state.isNotesSidebarOpen) {
+        elements.floatingNotesContainer.classList.remove('hidden');
+    } else {
+        elements.floatingNotesContainer.classList.add('hidden');
+    }
+    
+    for (const noteId of state.visibleNoteIds) {
+        const note = state.notes[noteId];
+        if (!note) continue;
+        const floatingEl = createFloatingNote(note);
+        elements.floatingNotesContainer.appendChild(floatingEl);
+    }
+    
+    updateNoteArrows();
+}
+
+function createFloatingNote(note) {
+    const div = document.createElement('div');
+    div.className = 'floating-note';
+    div.dataset.noteId = note.id;
+    
+    if (note.id === state.currentNoteId) {
+        div.classList.add('active');
+    }
+    
+    const truncatedText = note.selected_text.length > 60 
+        ? note.selected_text.substring(0, 60) + '...' 
+        : note.selected_text;
+    
+    // Use AI-generated title if available
+    const title = note.title || `Page ${note.page_number}`;
+    
+    let contentHtml = '';
+    if (note.content_type === 'drawing') {
+        contentHtml = '<span class="floating-note-content">Drawing</span>';
+    } else if (note.content) {
+        const truncatedContent = note.content.length > 60 
+            ? note.content.substring(0, 60) + '...' 
+            : note.content;
+        contentHtml = `<span class="floating-note-content">${escapeHtml(truncatedContent)}</span>`;
+    }
+    
+    div.innerHTML = `
+        <div class="floating-note-header">
+            <span class="floating-note-title">${escapeHtml(title)}</span>
+            <button class="floating-note-close" title="Close">&times;</button>
+        </div>
+        <div class="floating-note-text">${escapeHtml(truncatedText)}</div>
+        ${contentHtml}
+    `;
+    
+    div.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('floating-note-close')) {
+            openNotePanel(note.id);
+        }
+    });
+    
+    div.querySelector('.floating-note-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.visibleNoteIds = state.visibleNoteIds.filter(id => id !== note.id);
+        renderFloatingNotes();
+    });
+    
+    return div;
+}
+
+function updateNoteArrows() {
+    if (!elements.noteArrows) return;
+    
+    elements.noteArrows.innerHTML = '';
+    
+    if (state.visibleNoteIds.length === 0 || state.isNotesSidebarOpen) return;
+    
+    for (const noteId of state.visibleNoteIds) {
+        const overlay = document.querySelector(`.note-overlay[data-note-id="${noteId}"]`);
+        if (!overlay) continue;
+        
+        const floatingEl = elements.floatingNotesContainer.querySelector(
+            `.floating-note[data-note-id="${noteId}"]`
+        );
+        if (!floatingEl) continue;
+        
+        const overlayRect = overlay.getBoundingClientRect();
+        const floatingRect = floatingEl.getBoundingClientRect();
+        
+        // Start point: left edge of annotation overlay
+        const startX = overlayRect.left;
+        const startY = overlayRect.top + overlayRect.height / 2;
+        
+        // End point: right edge of floating note
+        const endX = floatingRect.right;
+        const endY = floatingRect.top + floatingRect.height / 2;
+        
+        // Create curved path
+        const midX = (startX + endX) / 2;
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', `M ${endX} ${endY} C ${midX} ${endY}, ${midX} ${startY}, ${startX} ${startY}`);
+        path.setAttribute('class', 'note-arrow');
+        
+        elements.noteArrows.appendChild(path);
+        
+        // Arrow head
+        const arrowHead = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        const arrowSize = 6;
+        arrowHead.setAttribute('points', 
+            `${startX},${startY} ${startX - arrowSize},${startY - arrowSize} ${startX - arrowSize},${startY + arrowSize}`
+        );
+        arrowHead.setAttribute('class', 'note-arrow-head');
+        
+        elements.noteArrows.appendChild(arrowHead);
+    }
+}
+
+function openNotePanel(noteId) {
+    const note = state.notes[noteId];
+    if (!note) return;
+    
+    state.currentNoteId = noteId;
+    
+    // Update UI - use AI-generated title if available
+    elements.notePanel.classList.remove('hidden');
+    const title = note.title || `Page ${note.page_number}`;
+    elements.noteTitle.textContent = title;
+    elements.noteSelectedTextContent.textContent = note.selected_text;
+    
+    // Set content type
+    state.noteContentType = note.content_type || 'text';
+    updateNoteContentMode();
+    
+    // Load content
+    if (note.content_type === 'drawing') {
+        loadDrawingToCanvas(note.content);
+    } else {
+        elements.noteTextInput.value = note.content || '';
+    }
+    
+    // Update active states
+    updateNotesList();
+}
+
+// Auto-open note panel when note approaches center of screen
+function autoOpenNotePanel(noteId) {
+    const note = state.notes[noteId];
+    if (!note) return;
+    
+    // Don't auto-open if already showing this note
+    if (state.currentNoteId === noteId) return;
+    
+    // Track that this was auto-opened (so we can auto-close it)
+    state.autoOpenedNoteId = noteId;
+    
+    // Open the note panel
+    openNotePanel(noteId);
+}
+
+function closeNotePanel() {
+    elements.notePanel.classList.add('hidden');
+    state.currentNoteId = null;
+    state.autoOpenedNoteId = null; // Clear auto-opened tracking
+    elements.noteTextInput.value = '';
+    clearDrawingCanvas();
+    updateNotesList();
+}
+
+function updateNoteContentMode() {
+    if (state.noteContentType === 'text') {
+        elements.btnNoteText.classList.add('active');
+        elements.btnNoteDraw.classList.remove('active');
+        elements.noteTextInput.style.display = 'block';
+        elements.noteDrawingContainer.classList.add('hidden');
+    } else {
+        elements.btnNoteText.classList.remove('active');
+        elements.btnNoteDraw.classList.add('active');
+        elements.noteTextInput.style.display = 'none';
+        elements.noteDrawingContainer.classList.remove('hidden');
+        // Wait for layout to complete before initializing canvas
+        requestAnimationFrame(() => {
+            initDrawingCanvas();
+        });
+    }
+}
+
+// Drawing canvas functions
+function initDrawingCanvas() {
+    if (!elements.noteDrawingCanvas) return;
+    
+    const canvas = elements.noteDrawingCanvas;
+    const container = elements.noteDrawingContainer;
+    
+    // Get the actual displayed size of the canvas
+    const rect = canvas.getBoundingClientRect();
+    
+    // Set canvas internal resolution to match displayed size for 1:1 mapping
+    // Use devicePixelRatio for sharp rendering on high-DPI displays
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    
+    const ctx = canvas.getContext('2d');
+    // Scale context to account for DPR
+    ctx.scale(dpr, dpr);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#000000';
+    
+    // Redraw existing paths
+    redrawCanvas();
+}
+
+function clearDrawingCanvas() {
+    state.drawingPaths = [];
+    if (elements.noteDrawingCanvas) {
+        const canvas = elements.noteDrawingCanvas;
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+    }
+}
+
+function redrawCanvas() {
+    if (!elements.noteDrawingCanvas) return;
+    
+    const canvas = elements.noteDrawingCanvas;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    
+    // Clear the entire canvas (in canvas coordinates, not scaled)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#000000';
+    
+    for (const path of state.drawingPaths) {
+        if (path.length < 2) continue;
+        
+        ctx.beginPath();
+        ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) {
+            ctx.lineTo(path[i].x, path[i].y);
+        }
+        ctx.stroke();
+    }
+}
+
+function loadDrawingToCanvas(content) {
+    if (!content) {
+        state.drawingPaths = [];
+        return;
+    }
+    
+    try {
+        state.drawingPaths = JSON.parse(content);
+        initDrawingCanvas();
+    } catch (e) {
+        state.drawingPaths = [];
+    }
+}
+
+function getDrawingContent() {
+    return JSON.stringify(state.drawingPaths);
+}
+
+async function saveCurrentNote() {
+    if (!state.currentNoteId) return;
+    
+    const note = state.notes[state.currentNoteId];
+    if (!note) return;
+    
+    const contentType = state.noteContentType;
+    const content = contentType === 'drawing' 
+        ? getDrawingContent() 
+        : elements.noteTextInput.value;
+    
+    // Generate title if note doesn't have one yet
+    const shouldGenerateTitle = !note.title;
+    
+    try {
+        const result = await apiRequest('/update-note', {
+            pdf_path: state.pdfPath,
+            note_id: state.currentNoteId,
+            content_type: contentType,
+            content: content,
+            generate_title: shouldGenerateTitle
+        });
+        
+        // Update local state
+        note.content_type = contentType;
+        note.content = content;
+        if (result.title) {
+            note.title = result.title;
+        }
+        
+        updateNotesList();
+        closeNotePanel();
+    } catch (error) {
+        console.error('Failed to save note:', error);
+        alert('Failed to save note: ' + error.message);
+    }
+}
+
+async function deleteCurrentNote() {
+    if (!state.currentNoteId) return;
+    
+    const noteId = state.currentNoteId;
+    
+    try {
+        await apiRequest('/delete-note', {
+            pdf_path: state.pdfPath,
+            note_id: noteId
+        });
+        
+        delete state.notes[noteId];
+        state.visibleNoteIds = state.visibleNoteIds.filter(id => id !== noteId);
+        state.currentNoteId = null;
+        
+        // Remove overlay from DOM immediately
+        const overlay = document.querySelector(`.note-overlay[data-note-id="${noteId}"]`);
+        if (overlay) overlay.remove();
+        
+        // Remove floating note from DOM immediately
+        const floatingNote = document.querySelector(`.floating-note[data-note-id="${noteId}"]`);
+        if (floatingNote) floatingNote.remove();
+        
+        closeNotePanel();
+        updateNotesList();
+        updateNoteArrows();
+    } catch (error) {
+        console.error('Failed to delete note:', error);
+        alert('Failed to delete note: ' + error.message);
+    }
+}
+
+// Text selection for notes
+function getSelectedTextInfo() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return null;
+    
+    const selectedText = selection.toString().trim();
+    if (!selectedText) return null;
+    
+    // Find which page the selection is on
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const pageWrapper = container.nodeType === Node.TEXT_NODE 
+        ? container.parentElement?.closest('[data-page-num]')
+        : container.closest?.('[data-page-num]');
+    
+    if (!pageWrapper) return null;
+    
+    const pageNum = parseInt(pageWrapper.dataset.pageNum);
+    
+    // Get bounding box relative to page
+    const rects = range.getClientRects();
+    if (rects.length === 0) return null;
+    
+    const pageRect = pageWrapper.getBoundingClientRect();
+    
+    // getBoundingClientRect returns screen coordinates which already account for CSS zoom
+    // We need to convert to the base render scale coordinates
+    // Screen coords / zoomLevel = render scale coords
+    // render scale coords / renderScale = normalized coords
+    
+    // Combine all rects into one bounding box (in screen coordinates relative to page)
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const rect of rects) {
+        minX = Math.min(minX, rect.left - pageRect.left);
+        minY = Math.min(minY, rect.top - pageRect.top);
+        maxX = Math.max(maxX, rect.right - pageRect.left);
+        maxY = Math.max(maxY, rect.bottom - pageRect.top);
+    }
+    
+    // Convert from screen coords to normalized coords:
+    // Screen coords are scaled by zoomLevel, so divide by zoomLevel to get render coords
+    // Then divide by renderScale to get normalized PDF coords
+    const totalScale = state.renderScale * state.zoomLevel;
+    
+    return {
+        text: selectedText,
+        pageNumber: pageNum,
+        boundingBox: {
+            x: minX / totalScale,
+            y: minY / totalScale,
+            width: (maxX - minX) / totalScale,
+            height: (maxY - minY) / totalScale
+        }
+    };
+}
+
+async function createNoteFromSelection() {
+    const selectionInfo = getSelectedTextInfo();
+    if (!selectionInfo) {
+        alert('Please select some text first');
+        return;
+    }
+    
+    const noteId = generateNoteId();
+    
+    try {
+        const result = await apiRequest('/create-note', {
+            pdf_path: state.pdfPath,
+            note_id: noteId,
+            page_number: selectionInfo.pageNumber,
+            selected_text: selectionInfo.text,
+            bounding_box: selectionInfo.boundingBox,
+            content_type: 'text',
+            content: ''
+        });
+        
+        // Add to local state
+        state.notes[noteId] = result.note;
+        
+        // Clear selection
+        window.getSelection()?.removeAllRanges();
+        
+        // Update UI
+        updateNotesList();
+        
+        // Open the note panel
+        openNotePanel(noteId);
+        
+    } catch (error) {
+        console.error('Failed to create note:', error);
+        alert('Failed to create note: ' + error.message);
+    }
+}
+
+// ============================================
 // Navigation and Zoom
 // ============================================
 
@@ -1948,6 +2699,99 @@ function initEventListeners() {
     // Sidebar toggle
     elements.btnToggleSidebar.addEventListener('click', toggleSidebar);
     
+    // Notes sidebar toggle
+    if (elements.btnToggleNotesSidebar) {
+        elements.btnToggleNotesSidebar.addEventListener('click', toggleNotesSidebar);
+    }
+    
+    // Note mode button
+    if (elements.btnNoteMode) {
+        elements.btnNoteMode.addEventListener('click', () => {
+            if (state.isNoteSelectionMode) {
+                disableNoteSelectionMode();
+            } else {
+                enableNoteSelectionMode();
+            }
+        });
+    }
+    
+    // Listen for text selection in note mode
+    elements.pdfContainer.addEventListener('mouseup', () => {
+        if (state.isNoteSelectionMode) {
+            // Small delay to let selection finalize
+            setTimeout(() => {
+                const selectionInfo = getSelectedTextInfo();
+                if (selectionInfo) {
+                    createNoteFromSelection();
+                    disableNoteSelectionMode();
+                }
+            }, 10);
+        }
+    });
+    
+    // Note panel events
+    if (elements.btnCloseNote) {
+        elements.btnCloseNote.addEventListener('click', closeNotePanel);
+    }
+    if (elements.btnDeleteNote) {
+        elements.btnDeleteNote.addEventListener('click', deleteCurrentNote);
+    }
+    if (elements.btnSaveNote) {
+        elements.btnSaveNote.addEventListener('click', saveCurrentNote);
+    }
+    if (elements.btnNoteText) {
+        elements.btnNoteText.addEventListener('click', () => {
+            state.noteContentType = 'text';
+            updateNoteContentMode();
+        });
+    }
+    if (elements.btnNoteDraw) {
+        elements.btnNoteDraw.addEventListener('click', () => {
+            state.noteContentType = 'drawing';
+            updateNoteContentMode();
+        });
+    }
+    if (elements.btnClearDrawing) {
+        elements.btnClearDrawing.addEventListener('click', clearDrawingCanvas);
+    }
+    
+    // Drawing canvas events
+    if (elements.noteDrawingCanvas) {
+        const getCanvasCoords = (e) => {
+            const canvas = elements.noteDrawingCanvas;
+            const rect = canvas.getBoundingClientRect();
+            // Just get CSS coordinates - the canvas context is already scaled by DPR
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        };
+        
+        elements.noteDrawingCanvas.addEventListener('mousedown', (e) => {
+            state.isDrawing = true;
+            const coords = getCanvasCoords(e);
+            state.drawingPaths.push([coords]);
+        });
+        
+        elements.noteDrawingCanvas.addEventListener('mousemove', (e) => {
+            if (!state.isDrawing) return;
+            const coords = getCanvasCoords(e);
+            const currentPath = state.drawingPaths[state.drawingPaths.length - 1];
+            if (currentPath) {
+                currentPath.push(coords);
+                redrawCanvas();
+            }
+        });
+        
+        elements.noteDrawingCanvas.addEventListener('mouseup', () => {
+            state.isDrawing = false;
+        });
+        
+        elements.noteDrawingCanvas.addEventListener('mouseleave', () => {
+            state.isDrawing = false;
+        });
+    }
+    
     elements.chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -1968,11 +2812,18 @@ function initEventListeners() {
             return;
         }
         
-        // Handle Ctrl+Delete or Ctrl+Backspace to delete current annotation
-        if (e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace') && state.currentAnnotationId) {
-            e.preventDefault();
-            deleteCurrentAnnotation();
-            return;
+        // Handle Ctrl+Delete or Ctrl+Backspace to delete current annotation or note
+        if (e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace')) {
+            if (state.currentAnnotationId) {
+                e.preventDefault();
+                deleteCurrentAnnotation();
+                return;
+            }
+            if (state.currentNoteId) {
+                e.preventDefault();
+                deleteCurrentNote();
+                return;
+            }
         }
         
         // Ignore other shortcuts if typing in input
@@ -1985,7 +2836,7 @@ function initEventListeners() {
                     openFile();
                 }
                 break;
-            case 's':
+            case 'q':
                 if (e.ctrlKey) {
                     e.preventDefault();
                     if (state.pdfDoc) {
@@ -1997,9 +2848,24 @@ function initEventListeners() {
                     }
                 }
                 break;
+            case 'n':
+                // Toggle note selection mode (Ctrl+N)
+                if (e.ctrlKey && state.pdfDoc) {
+                    e.preventDefault();
+                    if (state.isNoteSelectionMode) {
+                        disableNoteSelectionMode();
+                    } else {
+                        enableNoteSelectionMode();
+                    }
+                }
+                break;
             case 'Escape':
                 if (state.isScreenshotMode) {
                     disableScreenshotMode();
+                } else if (state.isNoteSelectionMode) {
+                    disableNoteSelectionMode();
+                } else if (!elements.notePanel.classList.contains('hidden')) {
+                    closeNotePanel();
                 } else if (!elements.chatPanel.classList.contains('hidden')) {
                     closeChatPanel();
                 }
@@ -2075,6 +2941,14 @@ async function init() {
     elements.sidebar.classList.add('collapsed');
     elements.floatingAnnotationsContainer.classList.add('sidebar-collapsed');
     
+    // Set initial notes sidebar state (collapsed by default)
+    if (elements.notesSidebar) {
+        elements.notesSidebar.classList.add('collapsed');
+    }
+    if (elements.floatingNotesContainer) {
+        elements.floatingNotesContainer.classList.add('hidden');
+    }
+    
     // Get backend port from main process (dynamic port for each instance)
     try {
         const port = await window.electronAPI.getBackendPort();
@@ -2114,9 +2988,10 @@ async function init() {
     setInterval(saveViewState, 5000);
     window.addEventListener('beforeunload', saveViewState);
     
-    // Update annotation arrows on resize
+    // Update annotation and note arrows on resize
     window.addEventListener('resize', () => {
         updateAnnotationArrows();
+        updateNoteArrows();
     });
     
     // Retry connection every 5 seconds if disconnected
