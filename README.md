@@ -24,6 +24,12 @@ The name has a dual meaning: *margo* is Latin for ["margin"](https://www.latin-i
 - 🔗 **PDF Links**: Clickable internal and external links in PDFs
 - 🎯 **Smart Focus**: Annotations and notes auto-open when scrolled into view
 
+## Installation
+Run the install script to build the application:
+```bash
+./install.sh
+```
+
 ## Tech Stack
 
 - **Frontend**: Electron + PDF.js + KaTeX
